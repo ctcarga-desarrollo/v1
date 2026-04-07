@@ -44,7 +44,7 @@ const Dashboard = () => {
             <span>Dashboard</span>
           </button>
           
-          <button className="nav-item" data-testid="ofertas-nav-btn">
+          <button className="nav-item" onClick={() => navigate('/ofertas')} data-testid="ofertas-nav-btn">
             <FileText size={18} />
             <span>Ofertas</span>
           </button>
@@ -114,9 +114,9 @@ const Dashboard = () => {
 
           {/* Stats Cards */}
           <div className="stats-grid">
-            <div className="stat-card" data-testid="servicios-card">
+            <div className="stat-card" data-testid="ofertas-card">
               <div className="stat-header">
-                <span className="stat-label">Servicios</span>
+                <span className="stat-label">Ofertas</span>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z"/>
                 </svg>
