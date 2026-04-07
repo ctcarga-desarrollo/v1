@@ -1,11 +1,22 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, FileText, Plus, TrendingUp, Bell, Settings, Menu, LogOut, User } from 'lucide-react';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import '@/pages/Dashboard.css';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Datos para la gráfica estadística
+  const chartData = [
+    { mes: 'Ene', servicios: 45, completados: 42, cancelados: 3 },
+    { mes: 'Feb', servicios: 52, completados: 48, cancelados: 4 },
+    { mes: 'Mar', servicios: 61, completados: 58, cancelados: 3 },
+    { mes: 'Abr', servicios: 58, completados: 54, cancelados: 4 },
+    { mes: 'May', servicios: 67, completados: 63, cancelados: 4 },
+    { mes: 'Jun', servicios: 73, completados: 70, cancelados: 3 },
+  ];
 
   const handleLogout = () => {
     navigate('/');
@@ -97,15 +108,15 @@ const Dashboard = () => {
           <div className="content-header">
             <div>
               <h1 data-testid="page-title">Panel de control</h1>
-              <p className="subtitle">Monitorea ofertas, rutas de buses y facturas desde un solo lugar</p>
+              <p className="subtitle">Monitorea ofertas, rutas de servicios y estadísticas desde un solo lugar</p>
             </div>
           </div>
 
           {/* Stats Cards */}
           <div className="stats-grid">
-            <div className="stat-card" data-testid="ofertas-activas-card">
+            <div className="stat-card" data-testid="servicios-card">
               <div className="stat-header">
-                <span className="stat-label">Ofertas Activas</span>
+                <span className="stat-label">Servicios</span>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z"/>
                 </svg>
@@ -114,9 +125,9 @@ const Dashboard = () => {
               <div className="stat-footer">+2 desde ayer</div>
             </div>
 
-            <div className="stat-card" data-testid="buses-ruta-card">
+            <div className="stat-card" data-testid="servicios-ruta-card">
               <div className="stat-header">
-                <span className="stat-label">Buses en Ruta</span>
+                <span className="stat-label">Servicios en Ruta</span>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <rect x="3" y="6" width="18" height="13" rx="2"/>
                   <circle cx="8.5" cy="16.5" r="1.5"/>
@@ -127,118 +138,56 @@ const Dashboard = () => {
               <div className="stat-value">8</div>
               <div className="stat-footer">de 12 total</div>
             </div>
-
-            <div className="stat-card" data-testid="facturas-pendientes-card">
-              <div className="stat-header">
-                <span className="stat-label">Facturas Pendientes</span>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                  <line x1="16" y1="13" x2="8" y2="13"/>
-                  <line x1="16" y1="17" x2="8" y2="17"/>
-                  <polyline points="10 9 9 9 8 9"/>
-                </svg>
-              </div>
-              <div className="stat-value">5</div>
-              <div className="stat-footer">$4.2M total</div>
-            </div>
           </div>
 
-          {/* Facturas Pendientes Table */}
-          <div className="table-section">
+          {/* Gráfica Estadística */}
+          <div className="chart-section">
             <div className="section-header">
               <div>
-                <h2 data-testid="facturas-section-title">
-                  <FileText size={20} />
-                  Facturas Pendientes
+                <h2 data-testid="estadisticas-section-title">
+                  <TrendingUp size={20} />
+                  Estadísticas de Servicios
                 </h2>
-                <p className="section-subtitle">Facturas por cobrar y su estado de vencimiento</p>
+                <p className="section-subtitle">Análisis mensual de servicios realizados</p>
               </div>
             </div>
 
-            <div className="table-container">
-              <table className="invoice-table" data-testid="invoice-table">
-                <tbody>
-                  <tr data-testid="invoice-row-1">
-                    <td>
-                      <div className="invoice-id">INV-001</div>
-                      <span className="invoice-badge pending">Pendiente</span>
-                    </td>
-                    <td>
-                      <div className="company-name">Empresa Logística del Norte</div>
-                      <div className="invoice-amount">$ 1,250,000</div>
-                    </td>
-                    <td>
-                      <div className="invoice-date">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                          <line x1="16" y1="2" x2="16" y2="6"/>
-                          <line x1="8" y1="2" x2="8" y2="6"/>
-                          <line x1="3" y1="10" x2="21" y2="10"/>
-                        </svg>
-                        Vence: 2024-01-18
-                      </div>
-                    </td>
-                    <td className="action-buttons">
-                      <button className="btn-secondary" data-testid="ver-factura-btn-1">Ver Factura</button>
-                      <button className="btn-primary" data-testid="enviar-recordatorio-btn-1">Enviar Recordatorio</button>
-                    </td>
-                  </tr>
+            <div className="chart-container">
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="mes" stroke="#6b7280" />
+                  <YAxis stroke="#6b7280" />
+                  <Tooltip 
+                    contentStyle={{ 
+                      background: 'white', 
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                    }}
+                  />
+                  <Legend />
+                  <Bar dataKey="servicios" fill="#5b9eff" name="Total Servicios" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="completados" fill="#10b981" name="Completados" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="cancelados" fill="#ef4444" name="Cancelados" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
 
-                  <tr data-testid="invoice-row-2">
-                    <td>
-                      <div className="invoice-id">INV-002</div>
-                      <span className="invoice-badge overdue">VENCIDA</span>
-                      <span className="invoice-badge urgent">3 días vencida</span>
-                    </td>
-                    <td>
-                      <div className="company-name">Transportes Andinos S.A.</div>
-                      <div className="invoice-amount">$ 850,000</div>
-                    </td>
-                    <td>
-                      <div className="invoice-date">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                          <line x1="16" y1="2" x2="16" y2="6"/>
-                          <line x1="8" y1="2" x2="8" y2="6"/>
-                          <line x1="3" y1="10" x2="21" y2="10"/>
-                        </svg>
-                        Vence: 2024-01-12
-                      </div>
-                    </td>
-                    <td className="action-buttons">
-                      <button className="btn-secondary" data-testid="ver-factura-btn-2">Ver Factura</button>
-                      <button className="btn-primary" data-testid="enviar-recordatorio-btn-2">Enviar Recordatorio</button>
-                    </td>
-                  </tr>
-
-                  <tr data-testid="invoice-row-3">
-                    <td>
-                      <div className="invoice-id">INV-003</div>
-                      <span className="invoice-badge pending">Pendiente</span>
-                    </td>
-                    <td>
-                      <div className="company-name">Carga Express Ltda.</div>
-                      <div className="invoice-amount">$ 2,100,000</div>
-                    </td>
-                    <td>
-                      <div className="invoice-date">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                          <line x1="16" y1="2" x2="16" y2="6"/>
-                          <line x1="8" y1="2" x2="8" y2="6"/>
-                          <line x1="3" y1="10" x2="21" y2="10"/>
-                        </svg>
-                        Vence: 2024-01-25
-                      </div>
-                    </td>
-                    <td className="action-buttons">
-                      <button className="btn-secondary" data-testid="ver-factura-btn-3">Ver Factura</button>
-                      <button className="btn-primary" data-testid="enviar-recordatorio-btn-3">Enviar Recordatorio</button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+            {/* Resumen de métricas */}
+            <div className="metrics-summary">
+              <div className="metric-item">
+                <div className="metric-label">Tasa de Completados</div>
+                <div className="metric-value success">96.2%</div>
+              </div>
+              <div className="metric-item">
+                <div className="metric-label">Promedio Mensual</div>
+                <div className="metric-value">59 servicios</div>
+              </div>
+              <div className="metric-item">
+                <div className="metric-label">Crecimiento</div>
+                <div className="metric-value success">+62% vs año anterior</div>
+              </div>
             </div>
           </div>
         </div>
