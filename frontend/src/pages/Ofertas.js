@@ -133,9 +133,6 @@ const Ofertas = () => {
               <h1 data-testid="page-title">Ofertas publicadas</h1>
               <p className="subtitle">Encuentra y gestiona ofertas de transporte disponibles</p>
             </div>
-            <button className="btn-create-offer" data-testid="create-offer-btn">
-              Crear oferta de empresa externa
-            </button>
           </div>
 
           {/* Filtros */}
@@ -154,18 +151,6 @@ const Ofertas = () => {
                 <option>Activa</option>
                 <option>Pendiente</option>
                 <option>Completada</option>
-              </select>
-              <select className="filter-select">
-                <option>Todas las urgencias</option>
-                <option>Alta</option>
-                <option>Media</option>
-                <option>Baja</option>
-              </select>
-              <select className="filter-select">
-                <option>Todos los tipos</option>
-                <option>Maquinaria</option>
-                <option>Construcción</option>
-                <option>Alimentos</option>
               </select>
             </div>
           </div>
@@ -233,7 +218,7 @@ const Ofertas = () => {
                 </div>
 
                 <div className="oferta-actions">
-                  <button className="btn-primary" data-testid={`postularse-btn-${oferta.id}`}>Postularse</button>
+                  <button className="btn-primary" data-testid={`ver-btn-${oferta.id}`}>Ver</button>
                   <button className="btn-secondary" data-testid={`rechazar-btn-${oferta.id}`}>Rechazar</button>
                 </div>
               </div>

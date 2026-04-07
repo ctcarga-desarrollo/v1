@@ -1,7 +1,4 @@
 .ofertas-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
   margin-bottom: 32px;
 }
 
@@ -16,22 +13,6 @@
   font-weight: 700;
   color: #1a202c;
   margin: 0 0 8px 0;
-}
-
-.btn-create-offer {
-  padding: 12px 24px;
-  background: #2563eb;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.btn-create-offer:hover {
-  background: #1d4ed8;
 }
 
 /* Filtros */
@@ -55,7 +36,7 @@
 
 .filters-content {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr;
+  grid-template-columns: 2fr 1fr;
   gap: 12px;
 }
 
