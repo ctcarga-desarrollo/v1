@@ -49,7 +49,7 @@ const Dashboard = () => {
             <span>Ofertas</span>
           </button>
           
-          <button className="nav-item" data-testid="creacion-ofertas-nav-btn">
+          <button className="nav-item" onClick={() => navigate('/creacion-ofertas')} data-testid="creacion-ofertas-nav-btn">
             <Plus size={18} />
             <span>Creación ofertas</span>
           </button>

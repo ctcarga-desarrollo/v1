@@ -254,6 +254,58 @@ async def get_stats():
     }
 
 
+# --- DIRECCIONES FAVORITAS ---
+
+@api_router.get("/direcciones-favoritas")
+async def get_favoritas():
+    """Get all favorite addresses."""
+    favs = await db.direcciones_favoritas.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return favs
+
+
+@api_router.post("/direcciones-favoritas")
+async def create_favorita(data: dict):
+    """Save a favorite address."""
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "nombre_favorito": data.get("nombre_favorito", ""),
+        "direccion": data.get("direccion", {}),
+        "created_at": now,
+    }
+    await db.direcciones_favoritas.insert_one(doc)
+    created = await db.direcciones_favoritas.find_one({"id": doc["id"]}, {"_id": 0})
+    return created
+
+
+@api_router.delete("/direcciones-favoritas/{fav_id}")
+async def delete_favorita(fav_id: str):
+    """Delete a favorite address."""
+    result = await db.direcciones_favoritas.delete_one({"id": fav_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Favorito no encontrado")
+    return {"message": "Favorito eliminado"}
+
+
+# --- OFERTAS BORRADOR (Draft with addresses) ---
+
+@api_router.post("/ofertas-borrador")
+async def create_borrador(data: dict):
+    """Save offer draft with cargue/descargue addresses."""
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "cargue": data.get("cargue", {}),
+        "descargues": data.get("descargues", []),
+        "status": "borrador",
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.ofertas_borrador.insert_one(doc)
+    created = await db.ofertas_borrador.find_one({"id": doc["id"]}, {"_id": 0})
+    return created
+
+
 # ==================== APP SETUP ====================
 
 app.include_router(api_router)
