@@ -515,6 +515,9 @@ select.form-input {
   .form-row.cols-3 {
     grid-template-columns: 1fr;
   }
+  .form-row.cols-2 {
+    grid-template-columns: 1fr;
+  }
   .form-group.span-2 {
     grid-column: span 1;
   }
@@ -523,4 +526,63 @@ select.form-input {
     overflow-x: auto;
     padding: 16px;
   }
+}
+
+/* Vehicle Form - 2 col layout */
+.form-row.cols-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* Vehicle Summary */
+.vehicle-summary {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%);
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  margin-top: 8px;
+}
+
+.summary-icon {
+  width: 56px;
+  height: 56px;
+  background: white;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+  flex-shrink: 0;
+}
+
+.summary-details h4 {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a202c;
+  margin: 0 0 10px 0;
+}
+
+.summary-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.summary-tag {
+  padding: 5px 12px;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #4b5563;
+}
+
+.summary-tag.highlight {
+  background: #2563eb;
+  color: white;
+  border-color: #2563eb;
 }

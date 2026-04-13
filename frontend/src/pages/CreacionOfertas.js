@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Plus, TrendingUp, Bell, Settings, Menu, User, MapPin, ChevronRight, Star, X, Search, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, FileText, Plus, TrendingUp, Bell, Settings, Menu, User, MapPin, ChevronRight, Star, X, Search, ChevronDown, Truck } from 'lucide-react';
 import COLOMBIA_DATA from '@/data/colombiaData';
+import VEHICULOS_DATA from '@/data/vehiculosData';
 import '@/pages/CreacionOfertas.css';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -129,6 +130,7 @@ const AddressForm = ({ address, setAddress, favoritos, title, index }) => {
     if (direccionConstruida !== address.direccionConstruida) {
       setAddress({ ...address, direccionConstruida });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [direccionConstruida]);
 
   const update = (field, val) => setAddress({ ...address, [field]: val });
@@ -246,6 +248,93 @@ const CreacionOfertas = () => {
 
   // Step 2: Multiple destination addresses
   const [descargueAddresses, setDescargueAddresses] = useState([emptyAddress()]);
+
+  // Step 3: Vehicle configuration
+  const [vehicleConfig, setVehicleConfig] = useState({
+    configuracion: '',
+    tipo_vehiculo: '',
+    carroceria: '',
+    tipo_carga: '',
+    ejes: '',
+    peso_bruto_vehicular: '',
+    carga_util: '',
+  });
+
+  // Filtered options based on cascading selection
+  const configuracionOptions = useMemo(() => [...new Set(VEHICULOS_DATA.map(v => v.configuracion))], []);
+
+  const tipoVehiculoOptions = useMemo(() => {
+    if (!vehicleConfig.configuracion) return [];
+    return [...new Set(VEHICULOS_DATA.filter(v => v.configuracion === vehicleConfig.configuracion).map(v => v.tipo_vehiculo))];
+  }, [vehicleConfig.configuracion]);
+
+  const carroceriaOptions = useMemo(() => {
+    let filtered = VEHICULOS_DATA;
+    if (vehicleConfig.configuracion) filtered = filtered.filter(v => v.configuracion === vehicleConfig.configuracion);
+    if (vehicleConfig.tipo_vehiculo) filtered = filtered.filter(v => v.tipo_vehiculo === vehicleConfig.tipo_vehiculo);
+    return [...new Set(filtered.map(v => v.carroceria))];
+  }, [vehicleConfig.configuracion, vehicleConfig.tipo_vehiculo]);
+
+  const tipoCargaOptions = useMemo(() => {
+    let filtered = VEHICULOS_DATA;
+    if (vehicleConfig.configuracion) filtered = filtered.filter(v => v.configuracion === vehicleConfig.configuracion);
+    if (vehicleConfig.tipo_vehiculo) filtered = filtered.filter(v => v.tipo_vehiculo === vehicleConfig.tipo_vehiculo);
+    if (vehicleConfig.carroceria) filtered = filtered.filter(v => v.carroceria === vehicleConfig.carroceria);
+    return [...new Set(filtered.map(v => v.tipo_carga))];
+  }, [vehicleConfig.configuracion, vehicleConfig.tipo_vehiculo, vehicleConfig.carroceria]);
+
+  // Auto-fill ejes, PBV and carga_util when enough fields selected
+  useEffect(() => {
+    let filtered = VEHICULOS_DATA;
+    if (vehicleConfig.configuracion) filtered = filtered.filter(v => v.configuracion === vehicleConfig.configuracion);
+    if (vehicleConfig.tipo_vehiculo) filtered = filtered.filter(v => v.tipo_vehiculo === vehicleConfig.tipo_vehiculo);
+    if (vehicleConfig.carroceria) filtered = filtered.filter(v => v.carroceria === vehicleConfig.carroceria);
+    if (vehicleConfig.tipo_carga) filtered = filtered.filter(v => v.tipo_carga === vehicleConfig.tipo_carga);
+
+    if (filtered.length === 1) {
+      const match = filtered[0];
+      setVehicleConfig(prev => ({
+        ...prev,
+        ejes: String(match.ejes),
+        peso_bruto_vehicular: String(match.peso_bruto_vehicular),
+        carga_util: String(match.carga_util),
+      }));
+    } else if (filtered.length > 1 && vehicleConfig.configuracion) {
+      // If all have same ejes/PBV, fill those
+      const ejesSet = new Set(filtered.map(v => v.ejes));
+      const pbvSet = new Set(filtered.map(v => v.peso_bruto_vehicular));
+      setVehicleConfig(prev => ({
+        ...prev,
+        ejes: ejesSet.size === 1 ? String([...ejesSet][0]) : '',
+        peso_bruto_vehicular: pbvSet.size === 1 ? String([...pbvSet][0]) : '',
+        carga_util: '',
+      }));
+    }
+  }, [vehicleConfig.configuracion, vehicleConfig.tipo_vehiculo, vehicleConfig.carroceria, vehicleConfig.tipo_carga]);
+
+  const updateVehicle = (field, value) => {
+    setVehicleConfig(prev => {
+      const updated = { ...prev, [field]: value };
+      // Reset dependent fields when parent changes
+      if (field === 'configuracion') {
+        updated.tipo_vehiculo = '';
+        updated.carroceria = '';
+        updated.tipo_carga = '';
+        updated.ejes = '';
+        updated.peso_bruto_vehicular = '';
+        updated.carga_util = '';
+      } else if (field === 'tipo_vehiculo') {
+        updated.carroceria = '';
+        updated.tipo_carga = '';
+        updated.ejes = '';
+        updated.peso_bruto_vehicular = '';
+        updated.carga_util = '';
+      } else if (field === 'carroceria') {
+        updated.tipo_carga = '';
+      }
+      return updated;
+    });
+  };
 
   useEffect(() => { fetchFavoritos(); }, []);
 
@@ -418,8 +507,100 @@ const CreacionOfertas = () => {
             </div>
           )}
 
-          {/* Steps 3-5: Placeholder */}
-          {currentStep >= 3 && (
+          {/* Step 3: Tipo de vehículo requerido */}
+          {currentStep === 3 && (
+            <div className="form-section" data-testid="step-3-form">
+              <h2 className="section-title"><Truck size={20} /> Tipo de vehículo requerido</h2>
+
+              <div className="form-row cols-2">
+                <div className="form-group">
+                  <label>Configuración</label>
+                  <select className="form-input" value={vehicleConfig.configuracion} onChange={(e) => updateVehicle('configuracion', e.target.value)} data-testid="configuracion-select">
+                    <option value="">Seleccionar configuración...</option>
+                    {configuracionOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Tipo de vehículo</label>
+                  <select className="form-input" value={vehicleConfig.tipo_vehiculo} onChange={(e) => updateVehicle('tipo_vehiculo', e.target.value)} disabled={!vehicleConfig.configuracion} data-testid="tipo-vehiculo-select">
+                    <option value="">Seleccionar tipo...</option>
+                    {tipoVehiculoOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-row cols-2">
+                <div className="form-group">
+                  <label>Carrocería</label>
+                  <select className="form-input" value={vehicleConfig.carroceria} onChange={(e) => updateVehicle('carroceria', e.target.value)} disabled={!vehicleConfig.configuracion} data-testid="carroceria-select">
+                    <option value="">Seleccionar carrocería...</option>
+                    {carroceriaOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Tipo de carga</label>
+                  <select className="form-input" value={vehicleConfig.tipo_carga} onChange={(e) => updateVehicle('tipo_carga', e.target.value)} disabled={!vehicleConfig.configuracion} data-testid="tipo-carga-select">
+                    <option value="">Seleccionar tipo de carga...</option>
+                    {tipoCargaOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-row cols-3">
+                <div className="form-group">
+                  <label>Ejes</label>
+                  <div className="form-input readonly" data-testid="ejes-display">
+                    {vehicleConfig.ejes || 'Se llena automáticamente'}
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Peso Bruto Vehicular (toneladas)</label>
+                  <div className="form-input readonly" data-testid="pbv-display">
+                    {vehicleConfig.peso_bruto_vehicular ? `${vehicleConfig.peso_bruto_vehicular} ton` : 'Se llena automáticamente'}
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Carga útil (toneladas)</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    value={vehicleConfig.carga_util}
+                    onChange={(e) => setVehicleConfig(prev => ({ ...prev, carga_util: e.target.value }))}
+                    placeholder="Se llena automáticamente (editable)"
+                    step="0.1"
+                    data-testid="carga-util-input"
+                  />
+                </div>
+              </div>
+
+              {/* Vehicle Summary Card */}
+              {vehicleConfig.configuracion && vehicleConfig.tipo_vehiculo && (
+                <div className="vehicle-summary" data-testid="vehicle-summary">
+                  <div className="summary-icon"><Truck size={28} /></div>
+                  <div className="summary-details">
+                    <h4>{vehicleConfig.configuracion} - {vehicleConfig.tipo_vehiculo}</h4>
+                    <div className="summary-tags">
+                      {vehicleConfig.carroceria && <span className="summary-tag">{vehicleConfig.carroceria}</span>}
+                      {vehicleConfig.tipo_carga && <span className="summary-tag">{vehicleConfig.tipo_carga}</span>}
+                      {vehicleConfig.ejes && <span className="summary-tag">{vehicleConfig.ejes} ejes</span>}
+                      {vehicleConfig.peso_bruto_vehicular && <span className="summary-tag">PBV: {vehicleConfig.peso_bruto_vehicular} ton</span>}
+                      {vehicleConfig.carga_util && <span className="summary-tag highlight">Carga útil: {vehicleConfig.carga_util} ton</span>}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="form-actions">
+                <button className="btn-outline" onClick={() => setCurrentStep(2)} data-testid="anterior-btn-3">Anterior</button>
+                <button className="btn-next" onClick={() => setCurrentStep(4)} data-testid="siguiente-btn-3">
+                  Siguiente <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Steps 4-5: Placeholder */}
+          {currentStep >= 4 && (
             <div className="form-section placeholder-step" data-testid="step-placeholder">
               <h2 className="section-title">{steps[currentStep - 1]?.label || 'Paso completado'}</h2>
               <p>Este paso se desarrollará próximamente.</p>
