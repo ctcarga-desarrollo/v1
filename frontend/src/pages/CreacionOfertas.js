@@ -728,6 +728,16 @@ const CreacionOfertas = () => {
                 </div>
               </div>
 
+              {/* Contenedor Serial ISO - aparece si se selecciona contenedor */}
+              {condiciones.empaqueProducto && condiciones.empaqueProducto.toLowerCase().includes('contenedor') && (
+                <div className="form-row cols-2">
+                  <div className="form-group">
+                    <label>Serial ISO del Contenedor</label>
+                    <input type="text" className="form-input" placeholder="Ej: MSCU1234567" value={condiciones.serialISO || ''} onChange={(e) => setCondiciones({...condiciones, serialISO: e.target.value})} data-testid="serial-iso-input" />
+                  </div>
+                </div>
+              )}
+
               {/* Sección Fletes */}
               <div className="subsection" data-testid="fletes-section">
                 <h3 className="subsection-title">Fletes</h3>
@@ -767,6 +777,26 @@ const CreacionOfertas = () => {
                   <div className="form-group">
                     <label>Saldo a Pagar</label>
                     <div className="form-input readonly currency-display" data-testid="saldo-pagar-display">{formatCurrency(saldoPagar)}</div>
+                  </div>
+                </div>
+                <div className="form-row cols-2">
+                  <div className="form-group">
+                    <label>Lugar de Pago</label>
+                    <input type="text" className="form-input" placeholder="Ingrese el lugar de pago" value={fletes.lugarPago || ''} onChange={(e) => setFletes({...fletes, lugarPago: e.target.value})} data-testid="lugar-pago-input" />
+                  </div>
+                  <div className="form-group">
+                    <label>Fecha de Pago</label>
+                    <input type="date" className="form-input" value={fletes.fechaPago || ''} onChange={(e) => setFletes({...fletes, fechaPago: e.target.value})} data-testid="fecha-pago-input" />
+                  </div>
+                </div>
+                <div className="form-row cols-2">
+                  <div className="form-group">
+                    <label>Cargue Pagado Por</label>
+                    <input type="text" className="form-input" placeholder="Ingrese quién paga el cargue" value={fletes.carguePagadoPor || ''} onChange={(e) => setFletes({...fletes, carguePagadoPor: e.target.value})} data-testid="cargue-pagado-input" />
+                  </div>
+                  <div className="form-group">
+                    <label>Descargue Pagado Por</label>
+                    <input type="text" className="form-input" placeholder="Ingrese quién paga el descargue" value={fletes.descarguePagadoPor || ''} onChange={(e) => setFletes({...fletes, descarguePagadoPor: e.target.value})} data-testid="descargue-pagado-input" />
                   </div>
                 </div>
               </div>
