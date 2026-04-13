@@ -315,7 +315,6 @@ const CreacionOfertas = () => {
   const updateVehicle = (field, value) => {
     setVehicleConfig(prev => {
       const updated = { ...prev, [field]: value };
-      // Reset dependent fields when parent changes
       if (field === 'configuracion') {
         updated.tipo_vehiculo = '';
         updated.carroceria = '';
@@ -334,6 +333,71 @@ const CreacionOfertas = () => {
       }
       return updated;
     });
+  };
+
+  // Step 4: Condiciones de la oferta
+  const [condiciones, setCondiciones] = useState({
+    remitente: '',
+    destinatario: '',
+    cantidadMovilizar: '',
+    unidadMedida: '',
+    naturalezaCarga: '',
+    empaqueProducto: '',
+  });
+
+  // Multi-destino tonnage distribution
+  const [distribucionDestinos, setDistribucionDestinos] = useState([]);
+  useEffect(() => {
+    if (descargueAddresses.length > 1) {
+      setDistribucionDestinos(prev => {
+        const arr = descargueAddresses.map((_, i) => prev[i] || '');
+        return arr;
+      });
+    } else {
+      setDistribucionDestinos([]);
+    }
+  }, [descargueAddresses.length]);
+
+  const [fletes, setFletes] = useState({
+    valorTotal: '',
+    valorTrayecto1: '',
+    valorTrayecto2: '',
+    retencionFuente: '',
+    retencionICA: '',
+    valorAnticipo: '',
+  });
+
+  const valorNeto = useMemo(() => {
+    const total = parseFloat(fletes.valorTotal) || 0;
+    const retFuente = parseFloat(fletes.retencionFuente) || 0;
+    const retICA = parseFloat(fletes.retencionICA) || 0;
+    return total - retFuente - retICA;
+  }, [fletes.valorTotal, fletes.retencionFuente, fletes.retencionICA]);
+
+  const saldoPagar = useMemo(() => {
+    const anticipo = parseFloat(fletes.valorAnticipo) || 0;
+    return valorNeto - anticipo;
+  }, [valorNeto, fletes.valorAnticipo]);
+
+  const [infoCargue, setInfoCargue] = useState({
+    fechaInicio: '',
+    horaInicio: '',
+    tiempoEstimadoValor: '',
+    tiempoEstimadoUnidad: 'minutos',
+    numSitiosCargue: '',
+    observaciones: '',
+  });
+
+  const numVehiculosRequeridos = useMemo(() => {
+    const cantidad = parseFloat(condiciones.cantidadMovilizar) || 0;
+    const cargaUtil = parseFloat(vehicleConfig.carga_util) || 0;
+    if (cargaUtil === 0 || cantidad === 0) return '';
+    return Math.ceil(cantidad / cargaUtil);
+  }, [condiciones.cantidadMovilizar, vehicleConfig.carga_util]);
+
+  const formatCurrency = (val) => {
+    if (!val && val !== 0) return '';
+    return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(val);
   };
 
   useEffect(() => { fetchFavoritos(); }, []);
@@ -599,18 +663,171 @@ const CreacionOfertas = () => {
             </div>
           )}
 
-          {/* Steps 4-5: Placeholder */}
-          {currentStep >= 4 && (
+          {/* Step 4: Condiciones de la Oferta */}
+          {currentStep === 4 && (
+            <div className="form-section" data-testid="step-4-form">
+              <h2 className="section-title"><FileText size={20} /> Condiciones de la Oferta</h2>
+
+              <div className="form-row cols-2">
+                <div className="form-group">
+                  <label>Remitente</label>
+                  <input type="text" className="form-input" placeholder="Escribe el generador de carga" value={condiciones.remitente} onChange={(e) => setCondiciones({...condiciones, remitente: e.target.value})} data-testid="remitente-input" />
+                </div>
+                <div className="form-group">
+                  <label>Destinatario</label>
+                  <input type="text" className="form-input" placeholder="Escribe el generador de carga" value={condiciones.destinatario} onChange={(e) => setCondiciones({...condiciones, destinatario: e.target.value})} data-testid="destinatario-input" />
+                </div>
+              </div>
+
+              <div className="form-row cols-2">
+                <div className="form-group">
+                  <label>Cantidad a movilizar</label>
+                  <input type="number" className="form-input" value={condiciones.cantidadMovilizar} onChange={(e) => setCondiciones({...condiciones, cantidadMovilizar: e.target.value})} data-testid="cantidad-movilizar-input" />
+                </div>
+                <div className="form-group">
+                  <label>Unidad de medida</label>
+                  <select className="form-input" value={condiciones.unidadMedida} onChange={(e) => setCondiciones({...condiciones, unidadMedida: e.target.value})} data-testid="unidad-medida-select">
+                    <option value="">Seleccionar...</option>
+                    <option value="Toneladas">Toneladas</option>
+                    <option value="Litros">Litros</option>
+                    <option value="Contenedores">Contenedores</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Multi-destino distribution */}
+              {descargueAddresses.length > 1 && condiciones.cantidadMovilizar && (
+                <div className="multidestino-section" data-testid="multidestino-section">
+                  <h4>Distribución por destino</h4>
+                  <p className="section-hint">Total a movilizar: {condiciones.cantidadMovilizar} {condiciones.unidadMedida}. Asigne la cantidad para cada destino:</p>
+                  <div className="distribution-grid">
+                    {descargueAddresses.map((addr, idx) => (
+                      <div key={idx} className="distribution-item">
+                        <label>Destino {idx + 1} {addr.direccionConstruida ? `(${addr.municipio || ''})` : ''}</label>
+                        <input type="number" className="form-input" placeholder="0" value={distribucionDestinos[idx] || ''} onChange={(e) => { const arr = [...distribucionDestinos]; arr[idx] = e.target.value; setDistribucionDestinos(arr); }} data-testid={`distribucion-destino-${idx}`} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="form-row cols-2">
+                <div className="form-group">
+                  <label>Naturaleza de la carga</label>
+                  <select className="form-input" value={condiciones.naturalezaCarga} onChange={(e) => setCondiciones({...condiciones, naturalezaCarga: e.target.value})} data-testid="naturaleza-carga-select">
+                    <option value="">Seleccionar...</option>
+                    {["Animales vivos","Carne","Leche","Frutas","Verduras","Granos","Cemento","Carbón","Petróleo","Gas","Productos químicos","Medicamentos","Maquinaria","Vehículos","Electrodomésticos","Madera"].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Empaque - Producto Transportado</label>
+                  <select className="form-input" value={condiciones.empaqueProducto} onChange={(e) => setCondiciones({...condiciones, empaqueProducto: e.target.value})} data-testid="empaque-select">
+                    <option value="">Seleccionar...</option>
+                    {["A granel","En sacos","En bolsas","En cajas","En cajones","En paquetes","En fardos","Paletizado","Big Bag","Contenedor 20 pies","Contenedor 40 pies","Contenedor refrigerado","Contenedor tanque","A granel líquido","En tanques","En cisternas","En bidones","En tambores","Vehículos rodando (sin embalaje)","Maquinaria suelta","Sobredimensionada sin embalaje","Animales vivos (en pie)","En canastillas","En rollos","En tubos","En bobinas"].map(e => <option key={e} value={e}>{e}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Sección Fletes */}
+              <div className="subsection" data-testid="fletes-section">
+                <h3 className="subsection-title">Fletes</h3>
+                <div className="form-row cols-3">
+                  <div className="form-group">
+                    <label>Valor Total a Pagar</label>
+                    <input type="number" className="form-input currency-input" placeholder="$ 0" value={fletes.valorTotal} onChange={(e) => setFletes({...fletes, valorTotal: e.target.value})} data-testid="valor-total-input" />
+                  </div>
+                  <div className="form-group">
+                    <label>Valor Trayecto 1</label>
+                    <input type="number" className="form-input currency-input" placeholder="$ 0" value={fletes.valorTrayecto1} onChange={(e) => setFletes({...fletes, valorTrayecto1: e.target.value})} data-testid="valor-trayecto1-input" />
+                  </div>
+                  <div className="form-group">
+                    <label>Valor Trayecto 2</label>
+                    <input type="number" className="form-input currency-input" placeholder="$ 0" value={fletes.valorTrayecto2} onChange={(e) => setFletes({...fletes, valorTrayecto2: e.target.value})} data-testid="valor-trayecto2-input" />
+                  </div>
+                </div>
+                <div className="form-row cols-3">
+                  <div className="form-group">
+                    <label>Retención en la Fuente</label>
+                    <input type="number" className="form-input currency-input" placeholder="$ 0" value={fletes.retencionFuente} onChange={(e) => setFletes({...fletes, retencionFuente: e.target.value})} data-testid="retencion-fuente-input" />
+                  </div>
+                  <div className="form-group">
+                    <label>Retención ICA</label>
+                    <input type="number" className="form-input currency-input" placeholder="$ 0" value={fletes.retencionICA} onChange={(e) => setFletes({...fletes, retencionICA: e.target.value})} data-testid="retencion-ica-input" />
+                  </div>
+                  <div className="form-group">
+                    <label>Valor Neto a Pagar</label>
+                    <div className="form-input readonly currency-display" data-testid="valor-neto-display">{formatCurrency(valorNeto)}</div>
+                  </div>
+                </div>
+                <div className="form-row cols-2">
+                  <div className="form-group">
+                    <label>Valor Anticipo</label>
+                    <input type="number" className="form-input currency-input" placeholder="$ 0" value={fletes.valorAnticipo} onChange={(e) => setFletes({...fletes, valorAnticipo: e.target.value})} data-testid="valor-anticipo-input" />
+                  </div>
+                  <div className="form-group">
+                    <label>Saldo a Pagar</label>
+                    <div className="form-input readonly currency-display" data-testid="saldo-pagar-display">{formatCurrency(saldoPagar)}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sección Información del Cargue */}
+              <div className="subsection" data-testid="info-cargue-section">
+                <h3 className="subsection-title">Información del Cargue</h3>
+                <div className="form-row cols-3">
+                  <div className="form-group">
+                    <label>Fecha de Inicio de Cargue</label>
+                    <input type="date" className="form-input" value={infoCargue.fechaInicio} onChange={(e) => setInfoCargue({...infoCargue, fechaInicio: e.target.value})} data-testid="fecha-inicio-input" />
+                  </div>
+                  <div className="form-group">
+                    <label>Hora de Inicio de Cargue</label>
+                    <input type="time" className="form-input" step="1" value={infoCargue.horaInicio} onChange={(e) => setInfoCargue({...infoCargue, horaInicio: e.target.value})} data-testid="hora-inicio-input" />
+                  </div>
+                  <div className="form-group">
+                    <label>Tiempo estimado de Cargue</label>
+                    <div className="input-with-unit">
+                      <input type="number" className="form-input" placeholder="0" value={infoCargue.tiempoEstimadoValor} onChange={(e) => setInfoCargue({...infoCargue, tiempoEstimadoValor: e.target.value})} data-testid="tiempo-estimado-input" />
+                      <select className="unit-select" value={infoCargue.tiempoEstimadoUnidad} onChange={(e) => setInfoCargue({...infoCargue, tiempoEstimadoUnidad: e.target.value})} data-testid="tiempo-unidad-select">
+                        <option value="minutos">Minutos</option>
+                        <option value="horas">Horas</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <div className="form-row cols-2">
+                  <div className="form-group">
+                    <label>Número de sitios de Cargue</label>
+                    <input type="number" className="form-input" value={infoCargue.numSitiosCargue} onChange={(e) => setInfoCargue({...infoCargue, numSitiosCargue: e.target.value})} data-testid="num-sitios-input" />
+                  </div>
+                  <div className="form-group">
+                    <label>Número de Vehículos Requeridos</label>
+                    <div className="form-input readonly" data-testid="num-vehiculos-display">
+                      {numVehiculosRequeridos || 'Se calcula automáticamente (cantidad / carga útil)'}
+                    </div>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Observaciones</label>
+                  <textarea className="form-input textarea" rows="4" placeholder="Escriba observaciones adicionales..." value={infoCargue.observaciones} onChange={(e) => setInfoCargue({...infoCargue, observaciones: e.target.value})} data-testid="observaciones-input" />
+                </div>
+              </div>
+
+              <div className="form-actions">
+                <button className="btn-outline" onClick={() => setCurrentStep(3)} data-testid="anterior-btn-4">Anterior</button>
+                <button className="btn-next" onClick={() => setCurrentStep(5)} data-testid="siguiente-btn-4">
+                  Siguiente <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 5: Placeholder */}
+          {currentStep >= 5 && (
             <div className="form-section placeholder-step" data-testid="step-placeholder">
               <h2 className="section-title">{steps[currentStep - 1]?.label || 'Paso completado'}</h2>
               <p>Este paso se desarrollará próximamente.</p>
               <div className="form-actions">
-                <button className="btn-outline" onClick={() => setCurrentStep(currentStep - 1)} data-testid="anterior-btn">Anterior</button>
-                {currentStep < 5 && (
-                  <button className="btn-next" onClick={() => setCurrentStep(currentStep + 1)} data-testid="siguiente-btn-next">
-                    Siguiente <ChevronRight size={16} />
-                  </button>
-                )}
+                <button className="btn-outline" onClick={() => setCurrentStep(4)} data-testid="anterior-btn">Anterior</button>
               </div>
             </div>
           )}
