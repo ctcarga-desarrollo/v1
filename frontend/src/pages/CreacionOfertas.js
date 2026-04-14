@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Plus, TrendingUp, Bell, Settings, Menu, User, MapPin, ChevronRight, Star, X, Search, ChevronDown, Truck } from 'lucide-react';
+import { LayoutDashboard, FileText, Plus, TrendingUp, Bell, Settings, Menu, User, MapPin, ChevronRight, Star, X, Search, ChevronDown, Truck, AlertCircle, Check } from 'lucide-react';
 import COLOMBIA_DATA from '@/data/colombiaData';
 import VEHICULOS_DATA from '@/data/vehiculosData';
 import '@/pages/CreacionOfertas.css';
@@ -233,6 +233,14 @@ const emptyAddress = () => ({
   direccionFavorita: '', tipoVia: '', numeroPrincipal: '', letraBis1: '', numeroSecundario: '', letraBis2: '', complemento: '', zonaEspecial: '', departamento: '', municipio: '', direccionConstruida: ''
 });
 
+const emptyFlete = () => ({
+  valorTotal: '', valorTrayecto1: '', valorTrayecto2: '',
+  retencionFuente: '', retencionICA: '', valorAnticipo: '',
+  lugarPago: '', fechaPago: '', carguePagadoPor: '', descarguePagadoPor: ''
+});
+
+const emptyDestinatario = () => ({ nombre: '', identificacion: '' });
+
 /* ---- Main Page ---- */
 const CreacionOfertas = () => {
   const navigate = useNavigate();
@@ -242,6 +250,11 @@ const CreacionOfertas = () => {
   const [showFavModal, setShowFavModal] = useState(false);
   const [favName, setFavName] = useState('');
   const [savingFavIndex, setSavingFavIndex] = useState(null);
+
+  // Validation & Confirmation
+  const [validationErrors, setValidationErrors] = useState([]);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmStep, setConfirmStep] = useState(null);
 
   // Step 1: Single origin address
   const [cargueAddress, setCargueAddress] = useState(emptyAddress());
@@ -300,7 +313,6 @@ const CreacionOfertas = () => {
         carga_util: String(match.carga_util),
       }));
     } else if (filtered.length > 1 && vehicleConfig.configuracion) {
-      // If all have same ejes/PBV, fill those
       const ejesSet = new Set(filtered.map(v => v.ejes));
       const pbvSet = new Set(filtered.map(v => v.peso_bruto_vehicular));
       setVehicleConfig(prev => ({
@@ -338,46 +350,58 @@ const CreacionOfertas = () => {
   // Step 4: Condiciones de la oferta
   const [condiciones, setCondiciones] = useState({
     remitente: '',
-    destinatario: '',
+    nombreResponsable: '',
+    identificacion: '',
     cantidadMovilizar: '',
     unidadMedida: '',
     naturalezaCarga: '',
     empaqueProducto: '',
+    serialISO: '',
   });
+
+  // Destinatario info per destination
+  const [destinatarioInfo, setDestinatarioInfo] = useState([emptyDestinatario()]);
 
   // Multi-destino tonnage distribution
   const [distribucionDestinos, setDistribucionDestinos] = useState([]);
+
+  // Fletes per destination
+  const [fletesPerDestino, setFletesPerDestino] = useState([emptyFlete()]);
+
+  // Sync arrays with destination count
   useEffect(() => {
-    if (descargueAddresses.length > 1) {
-      setDistribucionDestinos(prev => {
-        const arr = descargueAddresses.map((_, i) => prev[i] || '');
-        return arr;
-      });
+    const len = descargueAddresses.length;
+    setDestinatarioInfo(prev => descargueAddresses.map((_, i) => prev[i] || emptyDestinatario()));
+    setFletesPerDestino(prev => descargueAddresses.map((_, i) => prev[i] || emptyFlete()));
+    if (len > 1) {
+      setDistribucionDestinos(prev => descargueAddresses.map((_, i) => prev[i] || ''));
     } else {
       setDistribucionDestinos([]);
     }
   }, [descargueAddresses.length]);
 
-  const [fletes, setFletes] = useState({
-    valorTotal: '',
-    valorTrayecto1: '',
-    valorTrayecto2: '',
-    retencionFuente: '',
-    retencionICA: '',
-    valorAnticipo: '',
-  });
+  // Helper to compute flete values
+  const computeValorNeto = (flete) => {
+    const total = parseFloat(flete.valorTotal) || 0;
+    return total - (parseFloat(flete.retencionFuente) || 0) - (parseFloat(flete.retencionICA) || 0);
+  };
+  const computeSaldoPagar = (flete) => computeValorNeto(flete) - (parseFloat(flete.valorAnticipo) || 0);
 
-  const valorNeto = useMemo(() => {
-    const total = parseFloat(fletes.valorTotal) || 0;
-    const retFuente = parseFloat(fletes.retencionFuente) || 0;
-    const retICA = parseFloat(fletes.retencionICA) || 0;
-    return total - retFuente - retICA;
-  }, [fletes.valorTotal, fletes.retencionFuente, fletes.retencionICA]);
-
-  const saldoPagar = useMemo(() => {
-    const anticipo = parseFloat(fletes.valorAnticipo) || 0;
-    return valorNeto - anticipo;
-  }, [valorNeto, fletes.valorAnticipo]);
+  // Update helpers for per-destination arrays
+  const updateDestinatario = (idx, field, value) => {
+    setDestinatarioInfo(prev => {
+      const arr = [...prev];
+      arr[idx] = { ...arr[idx], [field]: value };
+      return arr;
+    });
+  };
+  const updateFlete = (idx, field, value) => {
+    setFletesPerDestino(prev => {
+      const arr = [...prev];
+      arr[idx] = { ...arr[idx], [field]: value };
+      return arr;
+    });
+  };
 
   const [infoCargue, setInfoCargue] = useState({
     fechaInicio: '',
@@ -427,22 +451,109 @@ const CreacionOfertas = () => {
     } catch (e) { console.error(e); }
   };
 
-  const handleSiguiente = async () => {
-    if (currentStep === 1) {
-      // Save cargue address as part of offer
-      setCurrentStep(2);
-    } else if (currentStep === 2) {
-      // Save everything as offer draft
-      try {
-        await fetch(`${API}/ofertas-borrador`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cargue: cargueAddress, descargues: descargueAddresses })
-        });
-      } catch (e) { console.error(e); }
-      // For now, go to step 3 placeholder
-      setCurrentStep(3);
+  /* ---- Validation ---- */
+  const validateAddress = (address) => {
+    const missing = [];
+    if (!address.tipoVia) missing.push('Tipo de v\u00eda');
+    if (!address.numeroPrincipal) missing.push('N\u00famero principal');
+    if (!address.numeroSecundario) missing.push('N\u00famero secundario');
+    if (!address.letraBis1) missing.push('Letra / Bis / Complemento');
+    if (!address.departamento) missing.push('Departamento');
+    if (!address.municipio) missing.push('Municipio');
+    return missing;
+  };
+
+  const validateStep4 = () => {
+    const errors = [];
+    if (!condiciones.remitente) errors.push('Remitente');
+    if (!condiciones.nombreResponsable) errors.push('Nombre Responsable');
+    if (!condiciones.identificacion) errors.push('Identificaci\u00f3n del Remitente');
+    if (!condiciones.cantidadMovilizar) errors.push('Cantidad a movilizar');
+    if (!condiciones.unidadMedida) errors.push('Unidad de medida');
+    if (!condiciones.naturalezaCarga) errors.push('Naturaleza de la carga');
+    if (!condiciones.empaqueProducto) errors.push('Empaque - Producto');
+    if (condiciones.empaqueProducto && condiciones.empaqueProducto.toLowerCase().includes('contenedor') && !condiciones.serialISO) {
+      errors.push('Serial ISO del Contenedor');
     }
+
+    destinatarioInfo.forEach((dest, idx) => {
+      const prefix = descargueAddresses.length > 1 ? `Destino ${idx + 1}: ` : '';
+      if (!dest.nombre) errors.push(`${prefix}Nombre Destinatario`);
+      if (!dest.identificacion) errors.push(`${prefix}Identificaci\u00f3n Destinatario`);
+    });
+
+    if (descargueAddresses.length > 1 && condiciones.cantidadMovilizar) {
+      const total = parseFloat(condiciones.cantidadMovilizar) || 0;
+      const sum = distribucionDestinos.reduce((s, v) => s + (parseFloat(v) || 0), 0);
+      if (Math.abs(sum - total) > 0.001) {
+        errors.push(`La distribuci\u00f3n (${sum}) no coincide con la cantidad a movilizar (${total})`);
+      }
+    }
+
+    fletesPerDestino.forEach((flete, idx) => {
+      const prefix = descargueAddresses.length > 1 ? `Destino ${idx + 1}: ` : '';
+      if (!flete.valorTotal) errors.push(`${prefix}Valor Total a Pagar`);
+      if (!flete.retencionFuente) errors.push(`${prefix}Retenci\u00f3n en la Fuente`);
+      if (!flete.retencionICA) errors.push(`${prefix}Retenci\u00f3n ICA`);
+      if (!flete.valorAnticipo) errors.push(`${prefix}Valor Anticipo`);
+      if (!flete.lugarPago) errors.push(`${prefix}Lugar de Pago`);
+      if (!flete.fechaPago) errors.push(`${prefix}Fecha de Pago`);
+      if (!flete.carguePagadoPor) errors.push(`${prefix}Cargue Pagado Por`);
+      if (!flete.descarguePagadoPor) errors.push(`${prefix}Descargue Pagado Por`);
+    });
+
+    if (!infoCargue.fechaInicio) errors.push('Fecha de Inicio de Cargue');
+    if (!infoCargue.horaInicio) errors.push('Hora de Inicio de Cargue');
+    if (!infoCargue.tiempoEstimadoValor) errors.push('Tiempo estimado de Cargue');
+    if (!infoCargue.numSitiosCargue) errors.push('N\u00famero de sitios de Cargue');
+
+    return errors;
+  };
+
+  /* ---- Navigation ---- */
+  const handleSiguiente = () => {
+    setValidationErrors([]);
+
+    if (currentStep === 1) {
+      const errors = validateAddress(cargueAddress);
+      if (errors.length > 0) {
+        setValidationErrors(errors);
+        return;
+      }
+      setConfirmStep(1);
+      setShowConfirmModal(true);
+    } else if (currentStep === 2) {
+      const allErrors = [];
+      descargueAddresses.forEach((addr, idx) => {
+        const errors = validateAddress(addr);
+        if (errors.length > 0) {
+          allErrors.push(...errors.map(e => `Destino ${idx + 1}: ${e}`));
+        }
+      });
+      if (allErrors.length > 0) {
+        setValidationErrors(allErrors);
+        return;
+      }
+      setConfirmStep(2);
+      setShowConfirmModal(true);
+    } else if (currentStep === 3) {
+      const errors = [];
+      if (!vehicleConfig.configuracion) errors.push('Configuraci\u00f3n');
+      if (!vehicleConfig.tipo_vehiculo) errors.push('Tipo de veh\u00edculo');
+      if (!vehicleConfig.carroceria) errors.push('Carrocer\u00eda');
+      if (!vehicleConfig.tipo_carga) errors.push('Tipo de carga');
+      if (errors.length > 0) {
+        setValidationErrors(errors);
+        return;
+      }
+      setCurrentStep(4);
+    }
+  };
+
+  const handleConfirmModal = () => {
+    setShowConfirmModal(false);
+    setCurrentStep(confirmStep + 1);
+    setConfirmStep(null);
   };
 
   const addDestino = () => setDescargueAddresses([...descargueAddresses, emptyAddress()]);
@@ -453,36 +564,60 @@ const CreacionOfertas = () => {
   };
 
   // Clean functions for each step
-  const limpiarPaso1 = () => setCargueAddress(emptyAddress());
-  const limpiarPaso2 = () => setDescargueAddresses([emptyAddress()]);
-  const limpiarPaso3 = () => setVehicleConfig({ configuracion: '', tipo_vehiculo: '', carroceria: '', tipo_carga: '', ejes: '', peso_bruto_vehicular: '', carga_util: '' });
+  const limpiarPaso1 = () => { setCargueAddress(emptyAddress()); setValidationErrors([]); };
+  const limpiarPaso2 = () => { setDescargueAddresses([emptyAddress()]); setValidationErrors([]); };
+  const limpiarPaso3 = () => { setVehicleConfig({ configuracion: '', tipo_vehiculo: '', carroceria: '', tipo_carga: '', ejes: '', peso_bruto_vehicular: '', carga_util: '' }); setValidationErrors([]); };
   const limpiarPaso4 = () => {
-    setCondiciones({ remitente: '', destinatario: '', cantidadMovilizar: '', unidadMedida: '', naturalezaCarga: '', empaqueProducto: '', nombreResponsable: '', identificacion: '' });
-    setFletes({ valorTotal: '', valorTrayecto1: '', valorTrayecto2: '', retencionFuente: '', retencionICA: '', valorAnticipo: '', lugarPago: '', fechaPago: '', carguePagadoPor: '', descarguePagadoPor: '' });
+    setCondiciones({ remitente: '', nombreResponsable: '', identificacion: '', cantidadMovilizar: '', unidadMedida: '', naturalezaCarga: '', empaqueProducto: '', serialISO: '' });
+    setDestinatarioInfo(descargueAddresses.map(() => emptyDestinatario()));
+    setFletesPerDestino(descargueAddresses.map(() => emptyFlete()));
+    setDistribucionDestinos(descargueAddresses.length > 1 ? descargueAddresses.map(() => '') : []);
     setInfoCargue({ fechaInicio: '', horaInicio: '', tiempoEstimadoValor: '', tiempoEstimadoUnidad: 'minutos', numSitiosCargue: '', observaciones: '' });
+    setValidationErrors([]);
   };
 
   // Crear Oferta
   const [creando, setCreando] = useState(false);
   const handleCrearOferta = async () => {
+    setValidationErrors([]);
+    const errors = validateStep4();
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+
     setCreando(true);
     try {
       const payload = {
         remitente: condiciones.remitente,
-        destinatario: condiciones.destinatario,
-        nombre_responsable: condiciones.nombreResponsable || '',
-        identificacion: condiciones.identificacion || '',
+        destinatario: destinatarioInfo[0]?.nombre || '',
+        nombre_responsable: condiciones.nombreResponsable,
+        identificacion: condiciones.identificacion,
         cargue: cargueAddress,
-        descargues: descargueAddresses,
+        descargues: descargueAddresses.map((addr, i) => ({
+          ...addr,
+          destinatario_nombre: destinatarioInfo[i]?.nombre || '',
+          destinatario_identificacion: destinatarioInfo[i]?.identificacion || '',
+          distribucion: descargueAddresses.length > 1 ? (distribucionDestinos[i] || '') : condiciones.cantidadMovilizar,
+          fletes: {
+            ...fletesPerDestino[i],
+            valorNeto: computeValorNeto(fletesPerDestino[i]),
+            saldoPagar: computeSaldoPagar(fletesPerDestino[i]),
+          },
+        })),
         vehiculo: vehicleConfig,
         condiciones: {
           cantidadMovilizar: condiciones.cantidadMovilizar,
           unidadMedida: condiciones.unidadMedida,
           naturalezaCarga: condiciones.naturalezaCarga,
           empaqueProducto: condiciones.empaqueProducto,
-          serialISO: condiciones.serialISO || '',
+          serialISO: condiciones.serialISO,
         },
-        fletes: fletes,
+        fletes: {
+          ...fletesPerDestino[0],
+          valorNeto: computeValorNeto(fletesPerDestino[0]),
+          saldoPagar: computeSaldoPagar(fletesPerDestino[0]),
+        },
         info_cargue: { ...infoCargue, numVehiculosRequeridos },
       };
       const res = await fetch(`${API}/ofertas`, {
@@ -492,7 +627,7 @@ const CreacionOfertas = () => {
       });
       if (res.ok) {
         const created = await res.json();
-        alert(`Oferta creada exitosamente!\nCódigo: ${created.codigo_oferta}`);
+        alert(`Oferta creada exitosamente!\nC\u00f3digo: ${created.codigo_oferta}`);
         navigate('/ofertas');
       }
     } catch (e) {
@@ -503,12 +638,103 @@ const CreacionOfertas = () => {
     }
   };
 
+  // Distribution sum check
+  const distribucionTotal = useMemo(() => {
+    return distribucionDestinos.reduce((s, v) => s + (parseFloat(v) || 0), 0);
+  }, [distribucionDestinos]);
+
+  const distribucionValida = useMemo(() => {
+    if (descargueAddresses.length <= 1) return true;
+    if (!condiciones.cantidadMovilizar) return true;
+    const total = parseFloat(condiciones.cantidadMovilizar) || 0;
+    return Math.abs(distribucionTotal - total) < 0.001;
+  }, [distribucionTotal, condiciones.cantidadMovilizar, descargueAddresses.length]);
+
   const steps = [
-    { num: 1, label: 'Información de Cargue', icon: <MapPin size={16} /> },
-    { num: 2, label: 'Información de Descargue', icon: <MapPin size={16} /> },
-    { num: 3, label: 'Tipo de vehículo requerido', icon: <Truck size={16} /> },
+    { num: 1, label: 'Informaci\u00f3n de Cargue', icon: <MapPin size={16} /> },
+    { num: 2, label: 'Informaci\u00f3n de Descargue', icon: <MapPin size={16} /> },
+    { num: 3, label: 'Tipo de veh\u00edculo requerido', icon: <Truck size={16} /> },
     { num: 4, label: 'Condiciones de la oferta', icon: <FileText size={16} /> },
   ];
+
+  /* ---- Validation Errors Display ---- */
+  const ValidationErrorsBox = () => validationErrors.length > 0 ? (
+    <div className="validation-errors" data-testid="validation-errors">
+      <AlertCircle size={18} />
+      <div>
+        <p className="validation-title">Campos obligatorios faltantes:</p>
+        <ul>
+          {validationErrors.map((e, i) => <li key={i}>{e}</li>)}
+        </ul>
+      </div>
+    </div>
+  ) : null;
+
+  /* ---- Flete Section Component ---- */
+  const FleteSection = ({ flete, idx, showTitle }) => (
+    <div className="subsection flete-destino-section" data-testid={`fletes-section-${idx}`}>
+      {showTitle && <h3 className="subsection-title">Fletes - Destino {idx + 1}</h3>}
+      {!showTitle && <h3 className="subsection-title">Fletes</h3>}
+      <div className="form-row cols-3">
+        <div className="form-group">
+          <label>Valor Total a Pagar *</label>
+          <input type="number" className="form-input currency-input" placeholder="$ 0" value={flete.valorTotal} onChange={(e) => updateFlete(idx, 'valorTotal', e.target.value)} data-testid={`valor-total-input-${idx}`} />
+        </div>
+        <div className="form-group">
+          <label>Valor Trayecto 1</label>
+          <input type="number" className="form-input currency-input" placeholder="$ 0" value={flete.valorTrayecto1} onChange={(e) => updateFlete(idx, 'valorTrayecto1', e.target.value)} data-testid={`valor-trayecto1-input-${idx}`} />
+        </div>
+        <div className="form-group">
+          <label>Valor Trayecto 2</label>
+          <input type="number" className="form-input currency-input" placeholder="$ 0" value={flete.valorTrayecto2} onChange={(e) => updateFlete(idx, 'valorTrayecto2', e.target.value)} data-testid={`valor-trayecto2-input-${idx}`} />
+        </div>
+      </div>
+      <div className="form-row cols-3">
+        <div className="form-group">
+          <label>Retención en la Fuente *</label>
+          <input type="number" className="form-input currency-input" placeholder="$ 0" value={flete.retencionFuente} onChange={(e) => updateFlete(idx, 'retencionFuente', e.target.value)} data-testid={`retencion-fuente-input-${idx}`} />
+        </div>
+        <div className="form-group">
+          <label>Retención ICA *</label>
+          <input type="number" className="form-input currency-input" placeholder="$ 0" value={flete.retencionICA} onChange={(e) => updateFlete(idx, 'retencionICA', e.target.value)} data-testid={`retencion-ica-input-${idx}`} />
+        </div>
+        <div className="form-group">
+          <label>Valor Neto a Pagar</label>
+          <div className="form-input readonly currency-display" data-testid={`valor-neto-display-${idx}`}>{formatCurrency(computeValorNeto(flete))}</div>
+        </div>
+      </div>
+      <div className="form-row cols-2">
+        <div className="form-group">
+          <label>Valor Anticipo *</label>
+          <input type="number" className="form-input currency-input" placeholder="$ 0" value={flete.valorAnticipo} onChange={(e) => updateFlete(idx, 'valorAnticipo', e.target.value)} data-testid={`valor-anticipo-input-${idx}`} />
+        </div>
+        <div className="form-group">
+          <label>Saldo a Pagar</label>
+          <div className="form-input readonly currency-display" data-testid={`saldo-pagar-display-${idx}`}>{formatCurrency(computeSaldoPagar(flete))}</div>
+        </div>
+      </div>
+      <div className="form-row cols-2">
+        <div className="form-group">
+          <label>Lugar de Pago *</label>
+          <input type="text" className="form-input" placeholder="Ingrese el lugar de pago" value={flete.lugarPago} onChange={(e) => updateFlete(idx, 'lugarPago', e.target.value)} data-testid={`lugar-pago-input-${idx}`} />
+        </div>
+        <div className="form-group">
+          <label>Fecha de Pago *</label>
+          <input type="date" className="form-input" value={flete.fechaPago} onChange={(e) => updateFlete(idx, 'fechaPago', e.target.value)} data-testid={`fecha-pago-input-${idx}`} />
+        </div>
+      </div>
+      <div className="form-row cols-2">
+        <div className="form-group">
+          <label>Cargue Pagado Por *</label>
+          <input type="text" className="form-input" placeholder="Ingrese quién paga el cargue" value={flete.carguePagadoPor} onChange={(e) => updateFlete(idx, 'carguePagadoPor', e.target.value)} data-testid={`cargue-pagado-input-${idx}`} />
+        </div>
+        <div className="form-group">
+          <label>Descargue Pagado Por *</label>
+          <input type="text" className="form-input" placeholder="Ingrese quién paga el descargue" value={flete.descarguePagadoPor} onChange={(e) => updateFlete(idx, 'descarguePagadoPor', e.target.value)} data-testid={`descargue-pagado-input-${idx}`} />
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="dashboard-container">
@@ -552,7 +778,7 @@ const CreacionOfertas = () => {
             {steps.map((s, i) => (
               <React.Fragment key={s.num}>
                 <div className={`step ${currentStep === s.num ? 'active' : ''} ${currentStep > s.num ? 'completed' : ''}`} data-testid={`step-${s.num}`}>
-                  <div className="step-circle">{s.icon}</div>
+                  <div className="step-circle">{currentStep > s.num ? <Check size={16} /> : s.icon}</div>
                   <div className="step-info">
                     <span className="step-label">Paso {s.num}</span>
                     <span className="step-name">{s.label}</span>
@@ -568,6 +794,7 @@ const CreacionOfertas = () => {
             <div className="form-section" data-testid="step-1-form">
               <h2 className="section-title"><MapPin size={20} /> Información sitio de cargue</h2>
               <AddressForm address={cargueAddress} setAddress={setCargueAddress} favoritos={favoritos} title={null} index="cargue" />
+              <ValidationErrorsBox />
               <div className="form-actions">
                 <button className="btn-clean" onClick={limpiarPaso1} data-testid="limpiar-paso1-btn">Limpiar</button>
                 <button className="btn-outline" onClick={() => { setSavingFavIndex(null); setShowFavModal(true); }} data-testid="guardar-favorito-btn">
@@ -613,9 +840,10 @@ const CreacionOfertas = () => {
               <button className="btn-add-destino" onClick={addDestino} data-testid="agregar-destino-btn">
                 <Plus size={16} /> Agregar otro destino
               </button>
+              <ValidationErrorsBox />
               <div className="form-actions">
                 <button className="btn-clean" onClick={limpiarPaso2} data-testid="limpiar-paso2-btn">Limpiar</button>
-                <button className="btn-outline" onClick={() => setCurrentStep(1)} data-testid="anterior-btn">Anterior</button>
+                <button className="btn-outline" onClick={() => { setCurrentStep(1); setValidationErrors([]); }} data-testid="anterior-btn">Anterior</button>
                 <button className="btn-next" onClick={handleSiguiente} data-testid="siguiente-btn-2">
                   Siguiente <ChevronRight size={16} />
                 </button>
@@ -630,14 +858,14 @@ const CreacionOfertas = () => {
 
               <div className="form-row cols-2">
                 <div className="form-group">
-                  <label>Configuración</label>
+                  <label>Configuración *</label>
                   <select className="form-input" value={vehicleConfig.configuracion} onChange={(e) => updateVehicle('configuracion', e.target.value)} data-testid="configuracion-select">
                     <option value="">Seleccionar configuración...</option>
                     {configuracionOptions.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label>Tipo de vehículo</label>
+                  <label>Tipo de vehículo *</label>
                   <select className="form-input" value={vehicleConfig.tipo_vehiculo} onChange={(e) => updateVehicle('tipo_vehiculo', e.target.value)} disabled={!vehicleConfig.configuracion} data-testid="tipo-vehiculo-select">
                     <option value="">Seleccionar tipo...</option>
                     {tipoVehiculoOptions.map(t => <option key={t} value={t}>{t}</option>)}
@@ -647,14 +875,14 @@ const CreacionOfertas = () => {
 
               <div className="form-row cols-2">
                 <div className="form-group">
-                  <label>Carrocería</label>
+                  <label>Carrocería *</label>
                   <select className="form-input" value={vehicleConfig.carroceria} onChange={(e) => updateVehicle('carroceria', e.target.value)} disabled={!vehicleConfig.configuracion} data-testid="carroceria-select">
                     <option value="">Seleccionar carrocería...</option>
                     {carroceriaOptions.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label>Tipo de carga</label>
+                  <label>Tipo de carga *</label>
                   <select className="form-input" value={vehicleConfig.tipo_carga} onChange={(e) => updateVehicle('tipo_carga', e.target.value)} disabled={!vehicleConfig.configuracion} data-testid="tipo-carga-select">
                     <option value="">Seleccionar tipo de carga...</option>
                     {tipoCargaOptions.map(t => <option key={t} value={t}>{t}</option>)}
@@ -666,13 +894,13 @@ const CreacionOfertas = () => {
                 <div className="form-group">
                   <label>Ejes</label>
                   <div className="form-input readonly" data-testid="ejes-display">
-                    {vehicleConfig.ejes || 'Se llena automáticamente'}
+                    {vehicleConfig.ejes || 'Se llena autom\u00e1ticamente'}
                   </div>
                 </div>
                 <div className="form-group">
                   <label>Peso Bruto Vehicular (toneladas)</label>
                   <div className="form-input readonly" data-testid="pbv-display">
-                    {vehicleConfig.peso_bruto_vehicular ? `${vehicleConfig.peso_bruto_vehicular} ton` : 'Se llena automáticamente'}
+                    {vehicleConfig.peso_bruto_vehicular ? `${vehicleConfig.peso_bruto_vehicular} ton` : 'Se llena autom\u00e1ticamente'}
                   </div>
                 </div>
                 <div className="form-group">
@@ -706,10 +934,11 @@ const CreacionOfertas = () => {
                 </div>
               )}
 
+              <ValidationErrorsBox />
               <div className="form-actions">
                 <button className="btn-clean" onClick={limpiarPaso3} data-testid="limpiar-paso3-btn">Limpiar</button>
-                <button className="btn-outline" onClick={() => setCurrentStep(2)} data-testid="anterior-btn-3">Anterior</button>
-                <button className="btn-next" onClick={() => setCurrentStep(4)} data-testid="siguiente-btn-3">
+                <button className="btn-outline" onClick={() => { setCurrentStep(2); setValidationErrors([]); }} data-testid="anterior-btn-3">Anterior</button>
+                <button className="btn-next" onClick={handleSiguiente} data-testid="siguiente-btn-3">
                   Siguiente <ChevronRight size={16} />
                 </button>
               </div>
@@ -721,41 +950,41 @@ const CreacionOfertas = () => {
             <div className="form-section" data-testid="step-4-form">
               <h2 className="section-title"><FileText size={20} /> Condiciones de la Oferta</h2>
 
-              <div className="form-row cols-2">
-                <div className="form-group">
-                  <label>Remitente</label>
-                  <input type="text" className="form-input" placeholder="Escribe el generador de carga" value={condiciones.remitente} onChange={(e) => setCondiciones({...condiciones, remitente: e.target.value})} data-testid="remitente-input" />
+              {/* Remitente Section */}
+              <div className="subsection-block" data-testid="remitente-section">
+                <h3 className="block-title"><User size={18} /> Remitente</h3>
+                <div className="form-row cols-3">
+                  <div className="form-group">
+                    <label>Remitente *</label>
+                    <input type="text" className="form-input" placeholder="Nombre del remitente" value={condiciones.remitente} onChange={(e) => setCondiciones({...condiciones, remitente: e.target.value})} data-testid="remitente-input" />
+                  </div>
+                  <div className="form-group">
+                    <label>Nombre Responsable *</label>
+                    <input type="text" className="form-input" placeholder="Nombre del responsable" value={condiciones.nombreResponsable} onChange={(e) => setCondiciones({...condiciones, nombreResponsable: e.target.value})} data-testid="nombre-responsable-input" />
+                  </div>
+                  <div className="form-group">
+                    <label>Identificación *</label>
+                    <input type="text" className="form-input" placeholder="Número de identificación" value={condiciones.identificacion} onChange={(e) => setCondiciones({...condiciones, identificacion: e.target.value})} data-testid="identificacion-input" />
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label>Destinatario</label>
-                  <input type="text" className="form-input" placeholder="Escribe el generador de carga" value={condiciones.destinatario} onChange={(e) => setCondiciones({...condiciones, destinatario: e.target.value})} data-testid="destinatario-input" />
-                </div>
-              </div>
-
-              <div className="form-row cols-3">
-                <div className="form-group">
-                  <label>Nombre Responsable</label>
-                  <input type="text" className="form-input" placeholder="Nombre del responsable" value={condiciones.nombreResponsable || ''} onChange={(e) => setCondiciones({...condiciones, nombreResponsable: e.target.value})} data-testid="nombre-responsable-input" />
-                </div>
-                <div className="form-group">
-                  <label>Identificación</label>
-                  <input type="text" className="form-input" placeholder="Número de identificación" value={condiciones.identificacion || ''} onChange={(e) => setCondiciones({...condiciones, identificacion: e.target.value})} data-testid="identificacion-input" />
-                </div>
-                <div className="form-group">
-                  <label>Dirección</label>
-                  <div className="form-input readonly" data-testid="direccion-responsable-display">
-                    {cargueAddress.direccionConstruida || 'Se carga automáticamente desde el Paso 1'}
+                <div className="form-row cols-1">
+                  <div className="form-group">
+                    <label>Dirección del Remitente</label>
+                    <div className="form-input readonly" data-testid="direccion-remitente-display">
+                      {cargueAddress.direccionConstruida || 'Se carga autom\u00e1ticamente desde el Paso 1'}
+                    </div>
                   </div>
                 </div>
               </div>
 
+              {/* General Conditions */}
               <div className="form-row cols-2">
                 <div className="form-group">
-                  <label>Cantidad a movilizar</label>
+                  <label>Cantidad a movilizar *</label>
                   <input type="number" className="form-input" value={condiciones.cantidadMovilizar} onChange={(e) => setCondiciones({...condiciones, cantidadMovilizar: e.target.value})} data-testid="cantidad-movilizar-input" />
                 </div>
                 <div className="form-group">
-                  <label>Unidad de medida</label>
+                  <label>Unidad de medida *</label>
                   <select className="form-input" value={condiciones.unidadMedida} onChange={(e) => setCondiciones({...condiciones, unidadMedida: e.target.value})} data-testid="unidad-medida-select">
                     <option value="">Seleccionar...</option>
                     <option value="Toneladas">Toneladas</option>
@@ -765,126 +994,99 @@ const CreacionOfertas = () => {
                 </div>
               </div>
 
-              {/* Multi-destino distribution */}
-              {descargueAddresses.length > 1 && condiciones.cantidadMovilizar && (
-                <div className="multidestino-section" data-testid="multidestino-section">
-                  <h4>Distribución por destino</h4>
-                  <p className="section-hint">Total a movilizar: {condiciones.cantidadMovilizar} {condiciones.unidadMedida}. Asigne la cantidad para cada destino:</p>
-                  <div className="distribution-grid">
-                    {descargueAddresses.map((addr, idx) => (
-                      <div key={idx} className="distribution-item">
-                        <label>Destino {idx + 1} {addr.direccionConstruida ? `(${addr.municipio || ''})` : ''}</label>
-                        <input type="number" className="form-input" placeholder="0" value={distribucionDestinos[idx] || ''} onChange={(e) => { const arr = [...distribucionDestinos]; arr[idx] = e.target.value; setDistribucionDestinos(arr); }} data-testid={`distribucion-destino-${idx}`} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               <div className="form-row cols-2">
                 <div className="form-group">
-                  <label>Naturaleza de la carga</label>
+                  <label>Naturaleza de la carga *</label>
                   <select className="form-input" value={condiciones.naturalezaCarga} onChange={(e) => setCondiciones({...condiciones, naturalezaCarga: e.target.value})} data-testid="naturaleza-carga-select">
                     <option value="">Seleccionar...</option>
-                    {["Animales vivos","Carne","Leche","Frutas","Verduras","Granos","Cemento","Carbón","Petróleo","Gas","Productos químicos","Medicamentos","Maquinaria","Vehículos","Electrodomésticos","Madera"].map(n => <option key={n} value={n}>{n}</option>)}
+                    {["Animales vivos","Carne","Leche","Frutas","Verduras","Granos","Cemento","Carb\u00f3n","Petr\u00f3leo","Gas","Productos qu\u00edmicos","Medicamentos","Maquinaria","Veh\u00edculos","Electrodom\u00e9sticos","Madera"].map(n => <option key={n} value={n}>{n}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label>Empaque - Producto Transportado</label>
+                  <label>Empaque - Producto Transportado *</label>
                   <select className="form-input" value={condiciones.empaqueProducto} onChange={(e) => setCondiciones({...condiciones, empaqueProducto: e.target.value})} data-testid="empaque-select">
                     <option value="">Seleccionar...</option>
-                    {["A granel","En sacos","En bolsas","En cajas","En cajones","En paquetes","En fardos","Paletizado","Big Bag","Contenedor 20 pies","Contenedor 40 pies","Contenedor refrigerado","Contenedor tanque","A granel líquido","En tanques","En cisternas","En bidones","En tambores","Vehículos rodando (sin embalaje)","Maquinaria suelta","Sobredimensionada sin embalaje","Animales vivos (en pie)","En canastillas","En rollos","En tubos","En bobinas"].map(e => <option key={e} value={e}>{e}</option>)}
+                    {["A granel","En sacos","En bolsas","En cajas","En cajones","En paquetes","En fardos","Paletizado","Big Bag","Contenedor 20 pies","Contenedor 40 pies","Contenedor refrigerado","Contenedor tanque","A granel l\u00edquido","En tanques","En cisternas","En bidones","En tambores","Veh\u00edculos rodando (sin embalaje)","Maquinaria suelta","Sobredimensionada sin embalaje","Animales vivos (en pie)","En canastillas","En rollos","En tubos","En bobinas"].map(e => <option key={e} value={e}>{e}</option>)}
                   </select>
                 </div>
               </div>
 
-              {/* Contenedor Serial ISO - aparece si se selecciona contenedor */}
+              {/* Contenedor Serial ISO */}
               {condiciones.empaqueProducto && condiciones.empaqueProducto.toLowerCase().includes('contenedor') && (
                 <div className="form-row cols-2">
                   <div className="form-group">
-                    <label>Serial ISO del Contenedor</label>
-                    <input type="text" className="form-input" placeholder="Ej: MSCU1234567" value={condiciones.serialISO || ''} onChange={(e) => setCondiciones({...condiciones, serialISO: e.target.value})} data-testid="serial-iso-input" />
+                    <label>Serial ISO del Contenedor *</label>
+                    <input type="text" className="form-input" placeholder="Ej: MSCU1234567" value={condiciones.serialISO} onChange={(e) => setCondiciones({...condiciones, serialISO: e.target.value})} data-testid="serial-iso-input" />
                   </div>
                 </div>
               )}
 
-              {/* Sección Fletes */}
-              <div className="subsection" data-testid="fletes-section">
-                <h3 className="subsection-title">Fletes</h3>
-                <div className="form-row cols-3">
-                  <div className="form-group">
-                    <label>Valor Total a Pagar</label>
-                    <input type="number" className="form-input currency-input" placeholder="$ 0" value={fletes.valorTotal} onChange={(e) => setFletes({...fletes, valorTotal: e.target.value})} data-testid="valor-total-input" />
+              {/* Per-Destination Sections */}
+              {descargueAddresses.map((addr, idx) => (
+                <div key={idx} className="destino-step4-block" data-testid={`destino-step4-${idx}`}>
+                  <h3 className="destino-step4-title">
+                    <MapPin size={18} /> Destino {idx + 1} {addr.municipio ? `- ${addr.municipio}` : ''}
+                  </h3>
+
+                  {/* Destinatario Info */}
+                  <div className="subsection-block">
+                    <h4 className="block-subtitle">Destinatario</h4>
+                    <div className="form-row cols-3">
+                      <div className="form-group">
+                        <label>Nombre Destinatario *</label>
+                        <input type="text" className="form-input" placeholder="Nombre del destinatario" value={destinatarioInfo[idx]?.nombre || ''} onChange={(e) => updateDestinatario(idx, 'nombre', e.target.value)} data-testid={`destinatario-nombre-${idx}`} />
+                      </div>
+                      <div className="form-group">
+                        <label>Identificación Destinatario *</label>
+                        <input type="text" className="form-input" placeholder="Número de identificación" value={destinatarioInfo[idx]?.identificacion || ''} onChange={(e) => updateDestinatario(idx, 'identificacion', e.target.value)} data-testid={`destinatario-identificacion-${idx}`} />
+                      </div>
+                      <div className="form-group">
+                        <label>Dirección Destinatario</label>
+                        <div className="form-input readonly" data-testid={`destinatario-direccion-${idx}`}>
+                          {addr.direccionConstruida || 'Se carga desde el Paso 2'}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="form-group">
-                    <label>Valor Trayecto 1</label>
-                    <input type="number" className="form-input currency-input" placeholder="$ 0" value={fletes.valorTrayecto1} onChange={(e) => setFletes({...fletes, valorTrayecto1: e.target.value})} data-testid="valor-trayecto1-input" />
-                  </div>
-                  <div className="form-group">
-                    <label>Valor Trayecto 2</label>
-                    <input type="number" className="form-input currency-input" placeholder="$ 0" value={fletes.valorTrayecto2} onChange={(e) => setFletes({...fletes, valorTrayecto2: e.target.value})} data-testid="valor-trayecto2-input" />
-                  </div>
+
+                  {/* Distribution (multi-destination only) */}
+                  {descargueAddresses.length > 1 && condiciones.cantidadMovilizar && (
+                    <div className="distribution-inline">
+                      <label>Cantidad para este destino ({condiciones.unidadMedida || 'unidades'}) *</label>
+                      <input type="number" className="form-input" placeholder="0" value={distribucionDestinos[idx] || ''} onChange={(e) => { const arr = [...distribucionDestinos]; arr[idx] = e.target.value; setDistribucionDestinos(arr); }} data-testid={`distribucion-destino-${idx}`} />
+                    </div>
+                  )}
+
+                  {/* Fletes for this destination */}
+                  <FleteSection flete={fletesPerDestino[idx] || emptyFlete()} idx={idx} showTitle={descargueAddresses.length > 1} />
                 </div>
-                <div className="form-row cols-3">
-                  <div className="form-group">
-                    <label>Retención en la Fuente</label>
-                    <input type="number" className="form-input currency-input" placeholder="$ 0" value={fletes.retencionFuente} onChange={(e) => setFletes({...fletes, retencionFuente: e.target.value})} data-testid="retencion-fuente-input" />
-                  </div>
-                  <div className="form-group">
-                    <label>Retención ICA</label>
-                    <input type="number" className="form-input currency-input" placeholder="$ 0" value={fletes.retencionICA} onChange={(e) => setFletes({...fletes, retencionICA: e.target.value})} data-testid="retencion-ica-input" />
-                  </div>
-                  <div className="form-group">
-                    <label>Valor Neto a Pagar</label>
-                    <div className="form-input readonly currency-display" data-testid="valor-neto-display">{formatCurrency(valorNeto)}</div>
-                  </div>
+              ))}
+
+              {/* Distribution validation message */}
+              {descargueAddresses.length > 1 && condiciones.cantidadMovilizar && (
+                <div className={`distribution-summary ${distribucionValida ? 'valid' : 'invalid'}`} data-testid="distribution-summary">
+                  {distribucionValida ? <Check size={16} /> : <AlertCircle size={16} />}
+                  <span>
+                    Distribuido: {distribucionTotal} / {condiciones.cantidadMovilizar} {condiciones.unidadMedida}
+                    {distribucionValida ? ' - Correcto' : ' - La suma debe coincidir con la cantidad total'}
+                  </span>
                 </div>
-                <div className="form-row cols-2">
-                  <div className="form-group">
-                    <label>Valor Anticipo</label>
-                    <input type="number" className="form-input currency-input" placeholder="$ 0" value={fletes.valorAnticipo} onChange={(e) => setFletes({...fletes, valorAnticipo: e.target.value})} data-testid="valor-anticipo-input" />
-                  </div>
-                  <div className="form-group">
-                    <label>Saldo a Pagar</label>
-                    <div className="form-input readonly currency-display" data-testid="saldo-pagar-display">{formatCurrency(saldoPagar)}</div>
-                  </div>
-                </div>
-                <div className="form-row cols-2">
-                  <div className="form-group">
-                    <label>Lugar de Pago</label>
-                    <input type="text" className="form-input" placeholder="Ingrese el lugar de pago" value={fletes.lugarPago || ''} onChange={(e) => setFletes({...fletes, lugarPago: e.target.value})} data-testid="lugar-pago-input" />
-                  </div>
-                  <div className="form-group">
-                    <label>Fecha de Pago</label>
-                    <input type="date" className="form-input" value={fletes.fechaPago || ''} onChange={(e) => setFletes({...fletes, fechaPago: e.target.value})} data-testid="fecha-pago-input" />
-                  </div>
-                </div>
-                <div className="form-row cols-2">
-                  <div className="form-group">
-                    <label>Cargue Pagado Por</label>
-                    <input type="text" className="form-input" placeholder="Ingrese quién paga el cargue" value={fletes.carguePagadoPor || ''} onChange={(e) => setFletes({...fletes, carguePagadoPor: e.target.value})} data-testid="cargue-pagado-input" />
-                  </div>
-                  <div className="form-group">
-                    <label>Descargue Pagado Por</label>
-                    <input type="text" className="form-input" placeholder="Ingrese quién paga el descargue" value={fletes.descarguePagadoPor || ''} onChange={(e) => setFletes({...fletes, descarguePagadoPor: e.target.value})} data-testid="descargue-pagado-input" />
-                  </div>
-                </div>
-              </div>
+              )}
 
               {/* Sección Información del Cargue */}
               <div className="subsection" data-testid="info-cargue-section">
                 <h3 className="subsection-title">Información del Cargue</h3>
                 <div className="form-row cols-3">
                   <div className="form-group">
-                    <label>Fecha de Inicio de Cargue</label>
+                    <label>Fecha de Inicio de Cargue *</label>
                     <input type="date" className="form-input" value={infoCargue.fechaInicio} onChange={(e) => setInfoCargue({...infoCargue, fechaInicio: e.target.value})} data-testid="fecha-inicio-input" />
                   </div>
                   <div className="form-group">
-                    <label>Hora de Inicio de Cargue</label>
+                    <label>Hora de Inicio de Cargue *</label>
                     <input type="time" className="form-input" step="1" value={infoCargue.horaInicio} onChange={(e) => setInfoCargue({...infoCargue, horaInicio: e.target.value})} data-testid="hora-inicio-input" />
                   </div>
                   <div className="form-group">
-                    <label>Tiempo estimado de Cargue</label>
+                    <label>Tiempo estimado de Cargue *</label>
                     <div className="input-with-unit">
                       <input type="number" className="form-input" placeholder="0" value={infoCargue.tiempoEstimadoValor} onChange={(e) => setInfoCargue({...infoCargue, tiempoEstimadoValor: e.target.value})} data-testid="tiempo-estimado-input" />
                       <select className="unit-select" value={infoCargue.tiempoEstimadoUnidad} onChange={(e) => setInfoCargue({...infoCargue, tiempoEstimadoUnidad: e.target.value})} data-testid="tiempo-unidad-select">
@@ -896,13 +1098,13 @@ const CreacionOfertas = () => {
                 </div>
                 <div className="form-row cols-2">
                   <div className="form-group">
-                    <label>Número de sitios de Cargue</label>
+                    <label>Número de sitios de Cargue *</label>
                     <input type="number" className="form-input" value={infoCargue.numSitiosCargue} onChange={(e) => setInfoCargue({...infoCargue, numSitiosCargue: e.target.value})} data-testid="num-sitios-input" />
                   </div>
                   <div className="form-group">
                     <label>Número de Vehículos Requeridos</label>
                     <div className="form-input readonly" data-testid="num-vehiculos-display">
-                      {numVehiculosRequeridos || 'Se calcula automáticamente (cantidad / carga útil)'}
+                      {numVehiculosRequeridos || 'Se calcula autom\u00e1ticamente (cantidad / carga \u00fatil)'}
                     </div>
                   </div>
                 </div>
@@ -912,9 +1114,10 @@ const CreacionOfertas = () => {
                 </div>
               </div>
 
+              <ValidationErrorsBox />
               <div className="form-actions">
                 <button className="btn-clean" onClick={limpiarPaso4} data-testid="limpiar-paso4-btn">Limpiar</button>
-                <button className="btn-outline" onClick={() => setCurrentStep(3)} data-testid="anterior-btn-4">Anterior</button>
+                <button className="btn-outline" onClick={() => { setCurrentStep(3); setValidationErrors([]); }} data-testid="anterior-btn-4">Anterior</button>
                 <button className="btn-crear-oferta" onClick={handleCrearOferta} disabled={creando} data-testid="crear-oferta-btn">
                   {creando ? 'Creando...' : 'Crear Oferta'}
                 </button>
@@ -948,6 +1151,45 @@ const CreacionOfertas = () => {
             <div className="modal-footer">
               <button className="btn-outline" onClick={() => { setShowFavModal(false); setFavName(''); }}>Cancelar</button>
               <button className="btn-next" onClick={saveFavorito} data-testid="save-fav-btn">Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmar Dirección */}
+      {showConfirmModal && (
+        <div className="modal-overlay" data-testid="modal-confirm">
+          <div className="modal-content modal-confirm-content">
+            <div className="modal-header">
+              <h3><Check size={18} /> {confirmStep === 1 ? 'Confirmar Direcci\u00f3n de Cargue' : 'Confirmar Direcciones de Descargue'}</h3>
+              <button className="modal-close" onClick={() => setShowConfirmModal(false)}><X size={20} /></button>
+            </div>
+            <div className="modal-body">
+              {confirmStep === 1 && (
+                <div className="confirm-address-card" data-testid="confirm-card-cargue">
+                  <div className="confirm-field"><span className="confirm-label">Tipo de vía:</span> {cargueAddress.tipoVia}</div>
+                  <div className="confirm-field"><span className="confirm-label">Número:</span> {cargueAddress.numeroPrincipal} # {cargueAddress.numeroSecundario}</div>
+                  <div className="confirm-field"><span className="confirm-label">Departamento:</span> {cargueAddress.departamento}</div>
+                  <div className="confirm-field"><span className="confirm-label">Municipio:</span> {cargueAddress.municipio}</div>
+                  <div className="confirm-field full"><span className="confirm-label">Dirección:</span> {cargueAddress.direccionConstruida}</div>
+                </div>
+              )}
+              {confirmStep === 2 && descargueAddresses.map((addr, idx) => (
+                <div key={idx} className="confirm-address-card" data-testid={`confirm-card-descargue-${idx}`}>
+                  <h4 className="confirm-destino-title">Destino {idx + 1}</h4>
+                  <div className="confirm-field"><span className="confirm-label">Tipo de vía:</span> {addr.tipoVia}</div>
+                  <div className="confirm-field"><span className="confirm-label">Número:</span> {addr.numeroPrincipal} # {addr.numeroSecundario}</div>
+                  <div className="confirm-field"><span className="confirm-label">Departamento:</span> {addr.departamento}</div>
+                  <div className="confirm-field"><span className="confirm-label">Municipio:</span> {addr.municipio}</div>
+                  <div className="confirm-field full"><span className="confirm-label">Dirección:</span> {addr.direccionConstruida}</div>
+                </div>
+              ))}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setShowConfirmModal(false)} data-testid="confirm-edit-btn">Editar</button>
+              <button className="btn-next" onClick={handleConfirmModal} data-testid="confirm-ok-btn">
+                <Check size={16} /> Confirmar
+              </button>
             </div>
           </div>
         </div>

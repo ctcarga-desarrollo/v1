@@ -724,3 +724,194 @@ select.form-input {
   display: block;
   margin-bottom: 6px;
 }
+
+
+/* Validation Errors */
+.validation-errors {
+  display: flex;
+  gap: 12px;
+  padding: 16px 20px;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 10px;
+  margin-top: 20px;
+  color: #991b1b;
+}
+
+.validation-errors svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.validation-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 6px 0;
+}
+
+.validation-errors ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.validation-errors ul li {
+  font-size: 13px;
+  padding: 2px 0;
+  color: #b91c1c;
+}
+
+.validation-errors ul li::before {
+  content: "\2022 ";
+  color: #dc2626;
+}
+
+/* Confirmation Modal */
+.modal-confirm-content {
+  max-width: 560px;
+}
+
+.confirm-address-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+}
+
+.confirm-address-card:last-child {
+  margin-bottom: 0;
+}
+
+.confirm-destino-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #2563eb;
+  margin: 0 0 10px 0;
+}
+
+.confirm-field {
+  display: inline-block;
+  width: 48%;
+  font-size: 14px;
+  color: #374151;
+  padding: 4px 0;
+}
+
+.confirm-field.full {
+  width: 100%;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+  margin-top: 6px;
+}
+
+.confirm-label {
+  font-weight: 600;
+  color: #1a202c;
+}
+
+/* Step 4 - Per-Destination Sections */
+.subsection-block {
+  margin-bottom: 20px;
+}
+
+.block-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a202c;
+  margin: 0 0 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.block-subtitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4b5563;
+  margin: 0 0 12px 0;
+}
+
+.destino-step4-block {
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  padding: 24px;
+  margin: 24px 0;
+  background: linear-gradient(180deg, #f8faff 0%, #ffffff 100%);
+}
+
+.destino-step4-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1e40af;
+  margin: 0 0 20px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #dbeafe;
+}
+
+.flete-destino-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed #d1d5db;
+}
+
+.distribution-inline {
+  background: #fefce8;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin: 12px 0;
+}
+
+.distribution-inline label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #92400e;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.distribution-inline .form-input {
+  max-width: 240px;
+}
+
+/* Distribution Summary */
+.distribution-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 16px 0;
+}
+
+.distribution-summary.valid {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  color: #166534;
+}
+
+.distribution-summary.invalid {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+
+/* 1 column layout */
+.form-row.cols-1 {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 968px) {
+  .form-row.cols-1 {
+    grid-template-columns: 1fr;
+  }
+  .confirm-field {
+    width: 100%;
+  }
+}
