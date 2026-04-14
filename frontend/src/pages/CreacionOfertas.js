@@ -747,7 +747,8 @@ const CreacionOfertas = () => {
         <nav className="sidebar-nav" data-testid="sidebar-nav">
           <button className="nav-item" onClick={() => navigate('/dashboard')} data-testid="dashboard-nav-btn"><LayoutDashboard size={18} /><span>Dashboard</span></button>
           <button className="nav-item" onClick={() => navigate('/ofertas')} data-testid="ofertas-nav-btn"><FileText size={18} /><span>Ofertas</span></button>
-          <button className="nav-item active" data-testid="creacion-ofertas-nav-btn"><Plus size={18} /><span>Creación ofertas</span></button>
+          <button className="nav-item active" onClick={() => navigate('/creacion-ofertas')} data-testid="creacion-ofertas-nav-btn"><Plus size={18} /><span>Creación ofertas</span></button>
+          <button className="nav-item" onClick={() => navigate('/flota')} data-testid="flota-nav-btn"><Truck size={18} /><span>Flota</span></button>
           <button className="nav-item" data-testid="seguimiento-nav-btn"><TrendingUp size={18} /><span>Seguimiento cargas</span></button>
           <button className="nav-item" data-testid="alertas-nav-btn"><Bell size={18} /><span>Alertas</span><span className="badge">3</span></button>
           <button className="nav-item" data-testid="reportes-nav-btn"><TrendingUp size={18} /><span>Reportes</span></button>

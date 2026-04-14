@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Plus, TrendingUp, Bell, Settings, Menu, LogOut, User } from 'lucide-react';
+import { LayoutDashboard, FileText, Plus, TrendingUp, Bell, Settings, Menu, LogOut, User, Truck } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import '@/pages/Dashboard.css';
 
@@ -52,6 +52,11 @@ const Dashboard = () => {
           <button className="nav-item" onClick={() => navigate('/creacion-ofertas')} data-testid="creacion-ofertas-nav-btn">
             <Plus size={18} />
             <span>Creación ofertas</span>
+          </button>
+          
+          <button className="nav-item" onClick={() => navigate('/flota')} data-testid="flota-nav-btn">
+            <Truck size={18} />
+            <span>Flota</span>
           </button>
           
           <button className="nav-item" data-testid="seguimiento-nav-btn">

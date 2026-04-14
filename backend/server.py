@@ -1,4 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Query, UploadFile, File
+from fastapi.responses import FileResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -8,6 +9,9 @@ from pathlib import Path
 from typing import List, Optional
 import uuid
 from datetime import datetime, timezone
+
+UPLOAD_DIR = Path(__file__).parent / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -173,6 +177,173 @@ async def delete_favorita(fav_id: str):
     return {"message": "Favorito eliminado"}
 
 
+# --- VEHICULOS CRUD ---
+
+@api_router.get("/vehiculos")
+async def get_vehiculos(search: Optional[str] = Query(None)):
+    query = {}
+    if search and search.strip():
+        query["$or"] = [
+            {"placa": {"$regex": search, "$options": "i"}},
+            {"propietario": {"$regex": search, "$options": "i"}},
+            {"marca": {"$regex": search, "$options": "i"}},
+        ]
+    vehiculos = await db.vehiculos.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return vehiculos
+
+
+@api_router.get("/vehiculos/{vehiculo_id}")
+async def get_vehiculo(vehiculo_id: str):
+    v = await db.vehiculos.find_one({"id": vehiculo_id}, {"_id": 0})
+    if not v:
+        raise HTTPException(status_code=404, detail="Vehículo no encontrado")
+    return v
+
+
+@api_router.post("/vehiculos")
+async def create_vehiculo(data: dict):
+    now = datetime.now(timezone.utc).isoformat()
+    existing = await db.vehiculos.find_one({"placa": data.get("placa", "").upper()}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="Ya existe un vehículo con esta placa")
+    doc = {**data, "id": str(uuid.uuid4()), "placa": data.get("placa", "").upper(), "created_at": now, "updated_at": now}
+    await db.vehiculos.insert_one(doc)
+    return await db.vehiculos.find_one({"id": doc["id"]}, {"_id": 0})
+
+
+@api_router.put("/vehiculos/{vehiculo_id}")
+async def update_vehiculo(vehiculo_id: str, data: dict):
+    now = datetime.now(timezone.utc).isoformat()
+    data.pop("id", None)
+    data.pop("_id", None)
+    data["updated_at"] = now
+    if "placa" in data:
+        data["placa"] = data["placa"].upper()
+        dup = await db.vehiculos.find_one({"placa": data["placa"], "id": {"$ne": vehiculo_id}}, {"_id": 0})
+        if dup:
+            raise HTTPException(status_code=400, detail="Ya existe otro vehículo con esta placa")
+    result = await db.vehiculos.find_one_and_update(
+        {"id": vehiculo_id}, {"$set": data}, return_document=True, projection={"_id": 0}
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Vehículo no encontrado")
+    return result
+
+
+@api_router.delete("/vehiculos/{vehiculo_id}")
+async def delete_vehiculo(vehiculo_id: str):
+    await db.remolques.update_many({"vehiculo_vinculado": vehiculo_id}, {"$set": {"vehiculo_vinculado": None}})
+    result = await db.vehiculos.delete_one({"id": vehiculo_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Vehículo no encontrado")
+    return {"message": "Vehículo eliminado"}
+
+
+# --- REMOLQUES CRUD ---
+
+@api_router.get("/remolques")
+async def get_remolques(search: Optional[str] = Query(None)):
+    query = {}
+    if search and search.strip():
+        query["$or"] = [
+            {"placa": {"$regex": search, "$options": "i"}},
+            {"tipo_remolque": {"$regex": search, "$options": "i"}},
+        ]
+    remolques = await db.remolques.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return remolques
+
+
+@api_router.post("/remolques")
+async def create_remolque(data: dict):
+    now = datetime.now(timezone.utc).isoformat()
+    existing = await db.remolques.find_one({"placa": data.get("placa", "").upper()}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="Ya existe un remolque con esta placa")
+    doc = {**data, "id": str(uuid.uuid4()), "placa": data.get("placa", "").upper(), "vehiculo_vinculado": None, "created_at": now, "updated_at": now}
+    await db.remolques.insert_one(doc)
+    return await db.remolques.find_one({"id": doc["id"]}, {"_id": 0})
+
+
+@api_router.put("/remolques/{remolque_id}")
+async def update_remolque(remolque_id: str, data: dict):
+    now = datetime.now(timezone.utc).isoformat()
+    data.pop("id", None)
+    data.pop("_id", None)
+    data["updated_at"] = now
+    if "placa" in data:
+        data["placa"] = data["placa"].upper()
+    result = await db.remolques.find_one_and_update(
+        {"id": remolque_id}, {"$set": data}, return_document=True, projection={"_id": 0}
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Remolque no encontrado")
+    return result
+
+
+@api_router.delete("/remolques/{remolque_id}")
+async def delete_remolque(remolque_id: str):
+    result = await db.remolques.delete_one({"id": remolque_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Remolque no encontrado")
+    return {"message": "Remolque eliminado"}
+
+
+# --- VINCULACION VEHICULO-REMOLQUE ---
+
+@api_router.post("/vehiculos/{vehiculo_id}/vincular-remolque")
+async def vincular_remolque(vehiculo_id: str, data: dict):
+    vehiculo = await db.vehiculos.find_one({"id": vehiculo_id}, {"_id": 0})
+    if not vehiculo:
+        raise HTTPException(status_code=404, detail="Vehículo no encontrado")
+    if vehiculo.get("clase_vehiculo") != "Tractocamión":
+        raise HTTPException(status_code=400, detail="Solo se permite vincular remolques a Tractocamiones")
+    remolque_id = data.get("remolque_id")
+    remolque = await db.remolques.find_one({"id": remolque_id}, {"_id": 0})
+    if not remolque:
+        raise HTTPException(status_code=404, detail="Remolque no encontrado")
+    if remolque.get("vehiculo_vinculado") and remolque["vehiculo_vinculado"] != vehiculo_id:
+        raise HTTPException(status_code=400, detail="Este remolque ya está vinculado a otro vehículo")
+    await db.remolques.update_one({"id": remolque_id}, {"$set": {"vehiculo_vinculado": vehiculo_id}})
+    await db.vehiculos.update_one({"id": vehiculo_id}, {"$set": {"remolque_vinculado": remolque_id}})
+    return {"message": "Remolque vinculado exitosamente"}
+
+
+@api_router.post("/vehiculos/{vehiculo_id}/desvincular-remolque")
+async def desvincular_remolque(vehiculo_id: str):
+    vehiculo = await db.vehiculos.find_one({"id": vehiculo_id}, {"_id": 0})
+    if not vehiculo:
+        raise HTTPException(status_code=404, detail="Vehículo no encontrado")
+    remolque_id = vehiculo.get("remolque_vinculado")
+    if remolque_id:
+        await db.remolques.update_one({"id": remolque_id}, {"$set": {"vehiculo_vinculado": None}})
+    await db.vehiculos.update_one({"id": vehiculo_id}, {"$set": {"remolque_vinculado": None}})
+    return {"message": "Remolque desvinculado"}
+
+
+# --- FILE UPLOAD ---
+
+@api_router.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'bin'
+    allowed = {'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp', 'tiff'}
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail=f"Formato no permitido: {ext}")
+    unique_name = f"{uuid.uuid4().hex}.{ext}"
+    file_path = UPLOAD_DIR / unique_name
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+    return {"filename": unique_name, "original_name": file.filename, "url": f"/api/uploads/{unique_name}"}
+
+
+@api_router.get("/uploads/{filename}")
+async def get_upload(filename: str):
+    file_path = UPLOAD_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    return FileResponse(str(file_path))
+
+
 # ==================== APP SETUP ====================
 
 app.include_router(api_router)
@@ -191,9 +362,9 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def startup():
-    # Drop old seed data
-    await db.ofertas.delete_many({})
     await create_indexes()
+    await db.vehiculos.create_index("placa", unique=True)
+    await db.remolques.create_index("placa", unique=True)
     logger.info("CTCARGA API started successfully")
 
 

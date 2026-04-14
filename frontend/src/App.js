@@ -4,6 +4,7 @@ import LoginPage from "@/pages/LoginPage";
 import Dashboard from "@/pages/Dashboard";
 import Ofertas from "@/pages/Ofertas";
 import CreacionOfertas from "@/pages/CreacionOfertas";
+import Flota from "@/pages/Flota";
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/ofertas" element={<Ofertas />} />
           <Route path="/creacion-ofertas" element={<CreacionOfertas />} />
+          <Route path="/flota" element={<Flota />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
