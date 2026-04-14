@@ -452,12 +452,62 @@ const CreacionOfertas = () => {
     }
   };
 
+  // Clean functions for each step
+  const limpiarPaso1 = () => setCargueAddress(emptyAddress());
+  const limpiarPaso2 = () => setDescargueAddresses([emptyAddress()]);
+  const limpiarPaso3 = () => setVehicleConfig({ configuracion: '', tipo_vehiculo: '', carroceria: '', tipo_carga: '', ejes: '', peso_bruto_vehicular: '', carga_util: '' });
+  const limpiarPaso4 = () => {
+    setCondiciones({ remitente: '', destinatario: '', cantidadMovilizar: '', unidadMedida: '', naturalezaCarga: '', empaqueProducto: '', nombreResponsable: '', identificacion: '' });
+    setFletes({ valorTotal: '', valorTrayecto1: '', valorTrayecto2: '', retencionFuente: '', retencionICA: '', valorAnticipo: '', lugarPago: '', fechaPago: '', carguePagadoPor: '', descarguePagadoPor: '' });
+    setInfoCargue({ fechaInicio: '', horaInicio: '', tiempoEstimadoValor: '', tiempoEstimadoUnidad: 'minutos', numSitiosCargue: '', observaciones: '' });
+  };
+
+  // Crear Oferta
+  const [creando, setCreando] = useState(false);
+  const handleCrearOferta = async () => {
+    setCreando(true);
+    try {
+      const payload = {
+        remitente: condiciones.remitente,
+        destinatario: condiciones.destinatario,
+        nombre_responsable: condiciones.nombreResponsable || '',
+        identificacion: condiciones.identificacion || '',
+        cargue: cargueAddress,
+        descargues: descargueAddresses,
+        vehiculo: vehicleConfig,
+        condiciones: {
+          cantidadMovilizar: condiciones.cantidadMovilizar,
+          unidadMedida: condiciones.unidadMedida,
+          naturalezaCarga: condiciones.naturalezaCarga,
+          empaqueProducto: condiciones.empaqueProducto,
+          serialISO: condiciones.serialISO || '',
+        },
+        fletes: fletes,
+        info_cargue: { ...infoCargue, numVehiculosRequeridos },
+      };
+      const res = await fetch(`${API}/ofertas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const created = await res.json();
+        alert(`Oferta creada exitosamente!\nCódigo: ${created.codigo_oferta}`);
+        navigate('/ofertas');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error al crear la oferta');
+    } finally {
+      setCreando(false);
+    }
+  };
+
   const steps = [
     { num: 1, label: 'Información de Cargue', icon: <MapPin size={16} /> },
     { num: 2, label: 'Información de Descargue', icon: <MapPin size={16} /> },
-    { num: 3, label: 'Tipo de vehículo requerido', icon: <FileText size={16} /> },
+    { num: 3, label: 'Tipo de vehículo requerido', icon: <Truck size={16} /> },
     { num: 4, label: 'Condiciones de la oferta', icon: <FileText size={16} /> },
-    { num: 5, label: 'Datos de la mercancía', icon: <FileText size={16} /> },
   ];
 
   return (
@@ -519,6 +569,7 @@ const CreacionOfertas = () => {
               <h2 className="section-title"><MapPin size={20} /> Información sitio de cargue</h2>
               <AddressForm address={cargueAddress} setAddress={setCargueAddress} favoritos={favoritos} title={null} index="cargue" />
               <div className="form-actions">
+                <button className="btn-clean" onClick={limpiarPaso1} data-testid="limpiar-paso1-btn">Limpiar</button>
                 <button className="btn-outline" onClick={() => { setSavingFavIndex(null); setShowFavModal(true); }} data-testid="guardar-favorito-btn">
                   <Star size={16} /> Guardar como favorito
                 </button>
@@ -563,6 +614,7 @@ const CreacionOfertas = () => {
                 <Plus size={16} /> Agregar otro destino
               </button>
               <div className="form-actions">
+                <button className="btn-clean" onClick={limpiarPaso2} data-testid="limpiar-paso2-btn">Limpiar</button>
                 <button className="btn-outline" onClick={() => setCurrentStep(1)} data-testid="anterior-btn">Anterior</button>
                 <button className="btn-next" onClick={handleSiguiente} data-testid="siguiente-btn-2">
                   Siguiente <ChevronRight size={16} />
@@ -655,6 +707,7 @@ const CreacionOfertas = () => {
               )}
 
               <div className="form-actions">
+                <button className="btn-clean" onClick={limpiarPaso3} data-testid="limpiar-paso3-btn">Limpiar</button>
                 <button className="btn-outline" onClick={() => setCurrentStep(2)} data-testid="anterior-btn-3">Anterior</button>
                 <button className="btn-next" onClick={() => setCurrentStep(4)} data-testid="siguiente-btn-3">
                   Siguiente <ChevronRight size={16} />
@@ -676,6 +729,23 @@ const CreacionOfertas = () => {
                 <div className="form-group">
                   <label>Destinatario</label>
                   <input type="text" className="form-input" placeholder="Escribe el generador de carga" value={condiciones.destinatario} onChange={(e) => setCondiciones({...condiciones, destinatario: e.target.value})} data-testid="destinatario-input" />
+                </div>
+              </div>
+
+              <div className="form-row cols-3">
+                <div className="form-group">
+                  <label>Nombre Responsable</label>
+                  <input type="text" className="form-input" placeholder="Nombre del responsable" value={condiciones.nombreResponsable || ''} onChange={(e) => setCondiciones({...condiciones, nombreResponsable: e.target.value})} data-testid="nombre-responsable-input" />
+                </div>
+                <div className="form-group">
+                  <label>Identificación</label>
+                  <input type="text" className="form-input" placeholder="Número de identificación" value={condiciones.identificacion || ''} onChange={(e) => setCondiciones({...condiciones, identificacion: e.target.value})} data-testid="identificacion-input" />
+                </div>
+                <div className="form-group">
+                  <label>Dirección</label>
+                  <div className="form-input readonly" data-testid="direccion-responsable-display">
+                    {cargueAddress.direccionConstruida || 'Se carga automáticamente desde el Paso 1'}
+                  </div>
                 </div>
               </div>
 
@@ -843,24 +913,15 @@ const CreacionOfertas = () => {
               </div>
 
               <div className="form-actions">
+                <button className="btn-clean" onClick={limpiarPaso4} data-testid="limpiar-paso4-btn">Limpiar</button>
                 <button className="btn-outline" onClick={() => setCurrentStep(3)} data-testid="anterior-btn-4">Anterior</button>
-                <button className="btn-next" onClick={() => setCurrentStep(5)} data-testid="siguiente-btn-4">
-                  Siguiente <ChevronRight size={16} />
+                <button className="btn-crear-oferta" onClick={handleCrearOferta} disabled={creando} data-testid="crear-oferta-btn">
+                  {creando ? 'Creando...' : 'Crear Oferta'}
                 </button>
               </div>
             </div>
           )}
 
-          {/* Step 5: Placeholder */}
-          {currentStep >= 5 && (
-            <div className="form-section placeholder-step" data-testid="step-placeholder">
-              <h2 className="section-title">{steps[currentStep - 1]?.label || 'Paso completado'}</h2>
-              <p>Este paso se desarrollará próximamente.</p>
-              <div className="form-actions">
-                <button className="btn-outline" onClick={() => setCurrentStep(4)} data-testid="anterior-btn">Anterior</button>
-              </div>
-            </div>
-          )}
         </div>
       </main>
 

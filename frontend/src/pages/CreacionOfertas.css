@@ -343,6 +343,49 @@ select.form-input {
   background: #111827;
 }
 
+.btn-clean {
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-right: auto;
+}
+
+.btn-clean:hover {
+  background: #fee2e2;
+}
+
+.btn-crear-oferta {
+  padding: 12px 32px;
+  font-size: 15px;
+  font-weight: 700;
+  color: white;
+  background: linear-gradient(135deg, #ff9d4d 0%, #ff7a3d 100%);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-crear-oferta:hover {
+  background: linear-gradient(135deg, #ff8a3a 0%, #ff6728 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+}
+
+.btn-crear-oferta:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 /* Destino Blocks */
 .destino-block {
   border: 1px solid #e5e7eb;
