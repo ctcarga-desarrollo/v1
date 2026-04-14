@@ -23,6 +23,11 @@ api_router = APIRouter(prefix="/api")
 # ==================== INDEXES ====================
 
 async def create_indexes():
+    # Drop old text index if exists
+    try:
+        await db.ofertas.drop_index("nombre_text_categoria_text_ruta.origen_text_ruta.destino_text")
+    except Exception:
+        pass
     await db.ofertas.create_index([("remitente", "text"), ("cargue.direccionConstruida", "text"), ("descargues.direccionConstruida", "text")])
     await db.ofertas.create_index("estado")
     await db.ofertas.create_index([("created_at", -1)])

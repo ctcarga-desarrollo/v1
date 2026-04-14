@@ -545,7 +545,7 @@ const CreacionOfertas = () => {
         <div className="content-wrapper">
           <p className="breadcrumb">Ofertas / Crear oferta</p>
           <h1 className="page-title" data-testid="page-title">Crear Oferta</h1>
-          <p className="subtitle">Publica una nueva oferta de carga completando los 5 pasos del formulario</p>
+          <p className="subtitle">Publica una nueva oferta de carga completando los 4 pasos del formulario</p>
 
           {/* Stepper */}
           <div className="stepper" data-testid="stepper">
