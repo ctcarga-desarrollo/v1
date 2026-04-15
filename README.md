@@ -11,7 +11,31 @@ Sistema integral para la administración de operaciones logísticas de carga ter
 | Frontend | React 18, React Router, Lucide Icons, CSS Modules |
 | Backend | FastAPI (Python), Motor (async MongoDB driver) |
 | Base de datos | MongoDB |
+| Autenticación | JWT (httpOnly cookies) + bcrypt |
 | Archivos | Almacenamiento local en `/backend/uploads/` |
+
+---
+
+## Arquitectura Multitenant
+
+El sistema implementa aislamiento por empresa (tenant):
+
+- **Colección `empresas`**: Registro de cada empresa con id, nombre, estado, código.
+- **Campo `tenant_id`**: Presente en `ofertas`, `vehiculos`, `remolques`, `direcciones_favoritas`, `usuarios`.
+- **Filtrado obligatorio**: Todas las consultas (GET/POST/PUT/DELETE) filtran por `tenant_id` del usuario autenticado.
+- **Aislamiento total**: Un tenant nunca puede acceder a datos de otro tenant.
+- **Empresa semilla**: "Sueña" (código 00001), creada automáticamente en el primer arranque.
+
+### Roles de Usuario
+
+| Rol | Lectura | Escritura (ofertas, flota) | Gestión usuarios |
+|---|---|---|---|
+| ADMIN | Completa | Completa | Completa |
+| OPERADOR | Completa | Completa | No |
+| CONSULTA | Completa | No | No |
+| TESORERIA | Completa | No (solo pagos futuros) | No |
+
+Los permisos se validan en el backend; el frontend no decide el acceso.
 
 ---
 
@@ -20,86 +44,66 @@ Sistema integral para la administración de operaciones logísticas de carga ter
 ```
 /app
 ├── backend/
-│   ├── server.py                 # API FastAPI — rutas, modelos, lógica de negocio
-│   ├── uploads/                  # Documentos subidos (PDF, JPG, PNG)
+│   ├── server.py                 # API FastAPI — auth, multitenant, CRUD
+│   ├── uploads/                  # Documentos subidos
 │   ├── requirements.txt
 │   ├── tests/
-│   │   └── test_flota.py         # Tests pytest del módulo Flota
-│   └── .env                      # MONGO_URL, DB_NAME
+│   │   ├── test_flota.py
+│   │   └── test_auth_multitenant.py
+│   └── .env                      # MONGO_URL, DB_NAME, JWT_SECRET, ADMIN_*
 ├── frontend/
 │   ├── src/
-│   │   ├── App.js                # Enrutamiento principal
+│   │   ├── App.js                # Enrutamiento + ProtectedRoute
+│   │   ├── AuthContext.js        # Contexto de autenticación (login, logout, user)
 │   │   ├── pages/
-│   │   │   ├── LoginPage.js      # Autenticación
-│   │   │   ├── Dashboard.js      # Panel principal con estadísticas
-│   │   │   ├── Ofertas.js        # Listado de ofertas publicadas
-│   │   │   ├── Ofertas.css
-│   │   │   ├── CreacionOfertas.js # Wizard 4 pasos para crear ofertas
-│   │   │   ├── CreacionOfertas.css
+│   │   │   ├── LoginPage.js      # Login real con JWT
+│   │   │   ├── Dashboard.js      # Panel con estadísticas
+│   │   │   ├── Ofertas.js        # Listado de ofertas
+│   │   │   ├── CreacionOfertas.js # Wizard 4 pasos
 │   │   │   ├── Flota.js          # Gestión de vehículos y remolques
-│   │   │   └── Flota.css
+│   │   │   └── *.css
 │   │   └── data/
-│   │       ├── colombiaData.js   # Departamentos → Municipios de Colombia
-│   │       └── vehiculosData.js  # Configuraciones vehiculares en cascada
-│   ├── package.json
+│   │       ├── colombiaData.js
+│   │       └── vehiculosData.js
 │   └── .env                      # REACT_APP_BACKEND_URL
 ├── memory/
-│   └── PRD.md                    # Documento de requisitos del producto
-└── test_reports/                 # Reportes JSON de testing automatizado
+│   ├── PRD.md
+│   └── test_credentials.md
+└── test_reports/
 ```
+
+---
+
+## Autenticación
+
+### Flujo
+1. El usuario ingresa email/contraseña en `/`.
+2. `POST /api/auth/login` valida credenciales, genera tokens JWT.
+3. Los tokens se almacenan como cookies httpOnly (access: 12h, refresh: 7d).
+4. El frontend envía `credentials: 'include'` en todas las peticiones.
+5. El backend extrae el usuario desde la cookie, obtiene `tenant_id`, filtra datos.
+
+### Credenciales por defecto
+- **Admin**: `admin@ctcarga.com` / `admin123` (Rol: ADMIN, Empresa: Sueña)
 
 ---
 
 ## Módulos Funcionales
 
 ### 1. Login (`/`)
-Página de inicio de sesión. Navega al Dashboard al autenticarse.
+Login real con validación backend. Errores mostrados en la UI.
 
 ### 2. Dashboard (`/dashboard`)
-Panel con métricas generales: total de ofertas, sin asignar, activas, completadas. Gráficas de tendencia mensual.
+Panel con métricas filtradas por tenant. Nombre del usuario autenticado en el header.
 
 ### 3. Ofertas (`/ofertas`)
-Listado de ofertas publicadas con:
-- Tarjetas personalizadas por oferta
-- Búsqueda por texto (remitente, dirección, código)
-- Filtro por estado
-- Eliminación de ofertas
+Listado filtrado por tenant. Búsqueda, filtro por estado, eliminación.
 
 ### 4. Creación de Ofertas (`/creacion-ofertas`)
-Wizard de 4 pasos con validación progresiva:
-
-| Paso | Contenido | Validación |
-|---|---|---|
-| 1 — Cargue | Dirección de origen, favoritas | Campos obligatorios + modal de confirmación |
-| 2 — Descargue | Multi-destino, favoritas | Validación por destino + modal de confirmación |
-| 3 — Vehículo | Config. cascada (configuración → tipo → carrocería → carga) | Todos los campos obligatorios |
-| 4 — Condiciones | Remitente, destinatario/destino, distribución, fletes/destino, info cargue | Todos obligatorios excepto Trayecto 1 y 2 |
-
-**Código de oferta**: Generado automáticamente con formato `YYYY-MM-EMPRESA-SECUENCIAL` (ej: `2026-04-00001-0001`).
+Wizard de 4 pasos con validaciones, modales de confirmación, multi-destino, fletes independientes por destino.
 
 ### 5. Flota (`/flota`)
-Gestión de vehículos y remolques con pestañas:
-
-#### Vehículos
-Campos: placa, licencia de tránsito, marca (20 opciones), línea, modelo, clase (13 tipos), carrocería, combustible, motor, VIN, propietario, identificación, fecha de matrícula.
-
-Secciones regulatorias con fechas auto-calculadas:
-
-| Documento | Vigencia |
-|---|---|
-| Tarjeta de Operaciones | 1 año desde fecha de inicio |
-| SOAT | 1 año desde fecha de inicio |
-| Revisión Técnico-Mecánica | 1 año desde fecha de inicio **o** 2 años desde matrícula si el vehículo tiene < 2 años |
-
-Carga de documentos: Licencia de tránsito, SOAT, Revisión, Tarjeta de operaciones (PDF/JPG/PNG).
-
-#### Remolques / Semirremolques
-Campos: placa, tipo (13 opciones), VIN, número de ejes, capacidad de carga útil.
-
-#### Vinculación Vehículo-Remolque
-- **Regla de negocio**: Solo vehículos con clase `Tractocamión` pueden vincular remolques.
-- La vinculación es editable en cualquier momento.
-- Un remolque solo puede estar vinculado a un vehículo a la vez.
+Registro/edición de vehículos (13+ campos, documentos regulatorios, fechas auto-calculadas) y remolques. Vinculación vehículo-remolque (solo Tractocamiones).
 
 ---
 
@@ -107,132 +111,112 @@ Campos: placa, tipo (13 opciones), VIN, número de ejes, capacidad de carga úti
 
 Base URL: `/api`
 
-### Ofertas
-| Método | Ruta | Descripción |
-|---|---|---|
-| GET | `/api/ofertas` | Listar ofertas (query: `search`, `estado`) |
-| GET | `/api/ofertas/{id}` | Detalle de oferta |
-| POST | `/api/ofertas` | Crear oferta |
-| DELETE | `/api/ofertas/{id}` | Eliminar oferta |
+### Autenticación
+| Método | Ruta | Protegida | Descripción |
+|---|---|---|---|
+| POST | `/api/auth/login` | No | Login, retorna user + sets cookies |
+| POST | `/api/auth/logout` | No | Limpia cookies |
+| GET | `/api/auth/me` | Sí | Retorna usuario autenticado |
+| POST | `/api/auth/refresh` | No | Renueva access token |
 
-### Direcciones Favoritas
-| Método | Ruta | Descripción |
-|---|---|---|
-| GET | `/api/direcciones-favoritas` | Listar favoritas |
-| POST | `/api/direcciones-favoritas` | Guardar favorita |
-| DELETE | `/api/direcciones-favoritas/{id}` | Eliminar favorita |
+### Ofertas
+| Método | Ruta | Roles | Descripción |
+|---|---|---|---|
+| GET | `/api/ofertas` | Todos | Listar ofertas del tenant |
+| GET | `/api/ofertas/{id}` | Todos | Detalle de oferta |
+| POST | `/api/ofertas` | ADMIN, OPERADOR | Crear oferta |
+| DELETE | `/api/ofertas/{id}` | ADMIN, OPERADOR | Eliminar oferta |
 
 ### Estadísticas
-| Método | Ruta | Descripción |
-|---|---|---|
-| GET | `/api/stats` | Conteos por estado |
+| Método | Ruta | Roles | Descripción |
+|---|---|---|---|
+| GET | `/api/stats` | Todos | Conteos por estado (filtrado por tenant) |
+
+### Direcciones Favoritas
+| Método | Ruta | Roles | Descripción |
+|---|---|---|---|
+| GET | `/api/direcciones-favoritas` | Todos | Listar favoritas del tenant |
+| POST | `/api/direcciones-favoritas` | ADMIN, OPERADOR | Guardar favorita |
+| DELETE | `/api/direcciones-favoritas/{id}` | ADMIN, OPERADOR | Eliminar favorita |
 
 ### Vehículos
-| Método | Ruta | Descripción |
-|---|---|---|
-| GET | `/api/vehiculos` | Listar vehículos (query: `search`) |
-| GET | `/api/vehiculos/{id}` | Detalle de vehículo |
-| POST | `/api/vehiculos` | Registrar vehículo |
-| PUT | `/api/vehiculos/{id}` | Actualizar vehículo |
-| DELETE | `/api/vehiculos/{id}` | Eliminar vehículo |
-| POST | `/api/vehiculos/{id}/vincular-remolque` | Vincular remolque (body: `{remolque_id}`) |
-| POST | `/api/vehiculos/{id}/desvincular-remolque` | Desvincular remolque |
+| Método | Ruta | Roles | Descripción |
+|---|---|---|---|
+| GET | `/api/vehiculos` | Todos | Listar vehículos del tenant |
+| POST | `/api/vehiculos` | ADMIN, OPERADOR | Registrar vehículo |
+| PUT | `/api/vehiculos/{id}` | ADMIN, OPERADOR | Actualizar vehículo |
+| DELETE | `/api/vehiculos/{id}` | ADMIN, OPERADOR | Eliminar vehículo |
+| POST | `/api/vehiculos/{id}/vincular-remolque` | ADMIN, OPERADOR | Vincular remolque |
+| POST | `/api/vehiculos/{id}/desvincular-remolque` | ADMIN, OPERADOR | Desvincular |
 
 ### Remolques
-| Método | Ruta | Descripción |
-|---|---|---|
-| GET | `/api/remolques` | Listar remolques (query: `search`) |
-| POST | `/api/remolques` | Registrar remolque |
-| PUT | `/api/remolques/{id}` | Actualizar remolque |
-| DELETE | `/api/remolques/{id}` | Eliminar remolque |
+| Método | Ruta | Roles | Descripción |
+|---|---|---|---|
+| GET | `/api/remolques` | Todos | Listar remolques del tenant |
+| POST | `/api/remolques` | ADMIN, OPERADOR | Registrar remolque |
+| PUT | `/api/remolques/{id}` | ADMIN, OPERADOR | Actualizar remolque |
+| DELETE | `/api/remolques/{id}` | ADMIN, OPERADOR | Eliminar remolque |
 
 ### Archivos
-| Método | Ruta | Descripción |
-|---|---|---|
-| POST | `/api/upload` | Subir archivo (multipart, formatos: PDF/JPG/PNG/GIF/WEBP) |
-| GET | `/api/uploads/{filename}` | Descargar archivo |
+| Método | Ruta | Roles | Descripción |
+|---|---|---|---|
+| POST | `/api/upload` | ADMIN, OPERADOR | Subir archivo |
+| GET | `/api/uploads/{filename}` | Público | Descargar archivo |
 
 ---
 
 ## Modelos de Datos (MongoDB)
 
+### `empresas`
+```json
+{
+  "id": "uuid", "nombre": "Sueña", "codigo": "00001",
+  "estado": "activa", "created_at": "ISO 8601"
+}
+```
+
+### `usuarios`
+```json
+{
+  "_id": "ObjectId",
+  "email": "admin@ctcarga.com", "password_hash": "$2b$...",
+  "name": "Administrador", "rol": "ADMIN",
+  "tenant_id": "uuid (ref empresas.id)",
+  "created_at": "ISO 8601"
+}
+```
+
 ### `ofertas`
 ```json
 {
-  "id": "uuid",
-  "codigo_oferta": "2026-04-00001-0001",
-  "remitente": "string",
-  "destinatario": "string",
-  "nombre_responsable": "string",
-  "identificacion": "string",
-  "cargue": { "tipoVia": "", "numeroPrincipal": "", "departamento": "", "municipio": "", "direccionConstruida": "", ... },
-  "descargues": [
-    {
-      "tipoVia": "", "departamento": "", "municipio": "", "direccionConstruida": "",
-      "destinatario_nombre": "", "destinatario_identificacion": "",
-      "distribucion": "10",
-      "fletes": { "valorTotal": "", "retencionFuente": "", "retencionICA": "", "valorAnticipo": "", ... }
-    }
-  ],
-  "vehiculo": { "configuracion": "", "tipo_vehiculo": "", "carroceria": "", "tipo_carga": "", "ejes": "", ... },
-  "condiciones": { "cantidadMovilizar": "", "unidadMedida": "", "naturalezaCarga": "", "empaqueProducto": "" },
-  "fletes": { },
-  "info_cargue": { "fechaInicio": "", "horaInicio": "", "tiempoEstimadoValor": "", "numSitiosCargue": "", "numVehiculosRequeridos": "" },
+  "id": "uuid", "codigo_oferta": "2026-04-00001-0001",
+  "tenant_id": "uuid",
+  "remitente": "", "destinatario": "", "cargue": {}, "descargues": [],
+  "vehiculo": {}, "condiciones": {}, "fletes": {}, "info_cargue": {},
   "estado": "Sin Asignar",
-  "created_at": "ISO 8601",
-  "updated_at": "ISO 8601"
+  "created_at": "ISO 8601", "updated_at": "ISO 8601"
 }
 ```
 
 ### `vehiculos`
 ```json
 {
-  "id": "uuid",
-  "placa": "ABC123",
-  "licencia_transito_no": "",
-  "marca": "Kenworth",
-  "linea": "T800",
-  "modelo": "2023",
-  "clase_vehiculo": "Tractocamión",
-  "tipo_carroceria": "",
-  "combustible": "Diésel",
-  "numero_motor": "",
-  "vin": "",
-  "propietario": "",
-  "identificacion_propietario": "",
-  "fecha_matricula": "2023-06-15",
-  "tarjeta_operaciones": { "numero": "", "fecha_inicio": "", "fecha_fin": "" },
-  "soat": { "numero_poliza": "", "aseguradora": "", "fecha_inicio": "", "fecha_fin": "" },
-  "revision_tecnicomecanica": { "numero": "", "cda": "", "fecha_inicio": "", "fecha_fin": "" },
-  "documentos": { "licencia_transito": "/api/uploads/xxx.pdf", "soat": null, ... },
-  "remolque_vinculado": "uuid | null",
-  "created_at": "ISO 8601",
-  "updated_at": "ISO 8601"
+  "id": "uuid", "tenant_id": "uuid",
+  "placa": "ABC123", "marca": "Kenworth", "clase_vehiculo": "Tractocamión",
+  "tarjeta_operaciones": {}, "soat": {}, "revision_tecnicomecanica": {},
+  "documentos": {}, "remolque_vinculado": "uuid | null",
+  "created_at": "ISO 8601", "updated_at": "ISO 8601"
 }
 ```
 
 ### `remolques`
 ```json
 {
-  "id": "uuid",
-  "placa": "R12345",
-  "tipo_remolque": "Plana",
-  "vin": "",
-  "numero_ejes": 3,
-  "capacidad_carga_util": 35,
+  "id": "uuid", "tenant_id": "uuid",
+  "placa": "R12345", "tipo_remolque": "Plana",
+  "vin": "", "numero_ejes": 3, "capacidad_carga_util": 35,
   "vehiculo_vinculado": "uuid | null",
-  "created_at": "ISO 8601",
-  "updated_at": "ISO 8601"
-}
-```
-
-### `direcciones_favoritas`
-```json
-{
-  "id": "uuid",
-  "nombre_favorito": "Bodega Principal",
-  "direccion": { "tipoVia": "", "numeroPrincipal": "", "departamento": "", "municipio": "", ... },
-  "created_at": "ISO 8601"
+  "created_at": "ISO 8601", "updated_at": "ISO 8601"
 }
 ```
 
@@ -240,43 +224,41 @@ Base URL: `/api`
 
 ## Reglas de Negocio
 
-1. **Código de oferta**: Formato `YYYY-MM-EMPRESA-SEC`, secuencial auto-incremental por mes.
-2. **Vinculación remolque**: Solo clase de vehículo `Tractocamión`. Un remolque ↔ un vehículo.
-3. **Revisión técnico-mecánica**: Si matrícula < 2 años → vigencia = 2 años desde matrícula. Si no → 1 año desde fecha inicio.
-4. **Placa única**: No se permiten placas duplicadas en vehículos ni en remolques.
-5. **Distribución multi-destino**: La suma de cantidades asignadas debe igualar la cantidad total a movilizar.
-6. **Fletes por destino**: Cada destino tiene su propia sección de fletes con cálculos independientes de Valor Neto y Saldo a Pagar.
-
----
-
-## Ejecución Local
-
-```bash
-# Backend
-cd backend
-pip install -r requirements.txt
-uvicorn server:app --host 0.0.0.0 --port 8001
-
-# Frontend
-cd frontend
-yarn install
-yarn start
-```
-
-Variables de entorno requeridas:
-- `backend/.env`: `MONGO_URL`, `DB_NAME`
-- `frontend/.env`: `REACT_APP_BACKEND_URL`
+1. **Multitenant**: Todos los datos filtrados por `tenant_id`. Nunca se accede a datos de otro tenant.
+2. **Roles**: Validados en backend. ADMIN/OPERADOR pueden escribir; CONSULTA/TESORERIA solo lectura.
+3. **Código de oferta**: `YYYY-MM-CODIGO_EMPRESA-SEC` auto-incremental por mes y tenant.
+4. **Vinculación remolque**: Solo `Tractocamión`. Un remolque ↔ un vehículo.
+5. **Revisión técnico-mecánica**: Si matrícula < 2 años → vigencia 2 años desde matrícula.
+6. **Placa única**: Por tenant (dos tenants pueden tener la misma placa).
+7. **Distribución multi-destino**: Suma de cantidades = cantidad total a movilizar.
 
 ---
 
 ## Testing
 
 ```bash
-# Backend (pytest)
+# Backend
 cd backend && python -m pytest tests/ -v
 
-# Reportes automatizados
-cat test_reports/iteration_2.json
+# Reportes
+cat test_reports/iteration_3.json
 ```
 
-Cobertura actual: **34 tests (20 frontend + 14 backend) — 100% pass rate**.
+Cobertura: **26 backend + 8 frontend tests** — 100% backend, 95% frontend (bug menor en mensaje de error de login).
+
+---
+
+## Ejecución
+
+```bash
+# Backend
+cd backend && pip install -r requirements.txt
+uvicorn server:app --host 0.0.0.0 --port 8001
+
+# Frontend
+cd frontend && yarn install && yarn start
+```
+
+Variables de entorno:
+- `backend/.env`: `MONGO_URL`, `DB_NAME`, `CORS_ORIGINS`, `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`
+- `frontend/.env`: `REACT_APP_BACKEND_URL`
