@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, FileText, Plus, TrendingUp, Bell, Settings, Menu, LogOut, User, Truck } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useAuth } from '@/AuthContext';
 import '@/pages/Dashboard.css';
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Datos para la gráfica estadística
@@ -18,7 +20,8 @@ const Dashboard = () => {
     { mes: 'Jun', servicios: 73, completados: 70, cancelados: 3 },
   ];
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logout();
     navigate('/');
   };
 
@@ -101,7 +104,7 @@ const Dashboard = () => {
           </button>
           
           <div className="header-right">
-            <span className="user-name" data-testid="user-name">Monica Arcila</span>
+            <span className="user-name" data-testid="user-name">{user?.name || 'Usuario'}</span>
             <button className="user-avatar" data-testid="user-avatar-btn">
               <User size={20} />
             </button>

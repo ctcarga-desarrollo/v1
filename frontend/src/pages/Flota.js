@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, FileText, Plus, TrendingUp, Bell, Settings, Menu, User, Truck, Search, Edit2, Trash2, Link2, Unlink, ArrowLeft, Upload, X, FileCheck, Calendar, Shield, Wrench, ChevronDown } from 'lucide-react';
+import { useAuth } from '@/AuthContext';
 import '@/pages/Flota.css';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -40,6 +41,7 @@ const yearsDiff = (date1, date2) => {
 
 const Flota = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [view, setView] = useState('list');
   const [activeTab, setActiveTab] = useState('vehiculos');
@@ -66,7 +68,7 @@ const Flota = () => {
   const fetchVehiculos = useCallback(async () => {
     try {
       const params = searchTerm.trim() ? `?search=${encodeURIComponent(searchTerm)}` : '';
-      const res = await fetch(`${API}/vehiculos${params}`);
+      const res = await fetch(`${API}/vehiculos${params}`, { credentials: 'include' });
       if (res.ok) setVehiculos(await res.json());
     } catch (e) { console.error(e); }
   }, [searchTerm]);
@@ -74,7 +76,7 @@ const Flota = () => {
   const fetchRemolques = useCallback(async () => {
     try {
       const params = searchTerm.trim() ? `?search=${encodeURIComponent(searchTerm)}` : '';
-      const res = await fetch(`${API}/remolques${params}`);
+      const res = await fetch(`${API}/remolques${params}`, { credentials: 'include' });
       if (res.ok) setRemolques(await res.json());
     } catch (e) { console.error(e); }
   }, [searchTerm]);
@@ -129,7 +131,7 @@ const Flota = () => {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch(`${API}/upload`, { method: 'POST', body: formData });
+      const res = await fetch(`${API}/upload`, { method: 'POST', body: formData, credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setFileUploads(prev => ({ ...prev, [docType]: data.url }));
@@ -199,7 +201,7 @@ const Flota = () => {
     try {
       const url = editingId ? `${API}/vehiculos/${editingId}` : `${API}/vehiculos`;
       const method = editingId ? 'PUT' : 'POST';
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) });
       if (res.ok) {
         await fetchVehiculos();
         setView('list');
@@ -223,7 +225,7 @@ const Flota = () => {
     try {
       const url = editingId ? `${API}/remolques/${editingId}` : `${API}/remolques`;
       const method = editingId ? 'PUT' : 'POST';
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(trailerForm) });
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(trailerForm) });
       if (res.ok) {
         await fetchRemolques();
         setView('list');
@@ -240,13 +242,13 @@ const Flota = () => {
   /* Delete */
   const handleDeleteVehiculo = async (id) => {
     if (!window.confirm('¿Eliminar este vehículo?')) return;
-    await fetch(`${API}/vehiculos/${id}`, { method: 'DELETE' });
+    await fetch(`${API}/vehiculos/${id}`, { method: 'DELETE', credentials: 'include' });
     fetchVehiculos();
     fetchRemolques();
   };
   const handleDeleteRemolque = async (id) => {
     if (!window.confirm('¿Eliminar este remolque?')) return;
-    await fetch(`${API}/remolques/${id}`, { method: 'DELETE' });
+    await fetch(`${API}/remolques/${id}`, { method: 'DELETE', credentials: 'include' });
     fetchRemolques();
   };
 
@@ -282,7 +284,7 @@ const Flota = () => {
   const handleVincular = async () => {
     if (!selectedRemolqueId) return;
     const res = await fetch(`${API}/vehiculos/${linkVehiculoId}/vincular-remolque`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ remolque_id: selectedRemolqueId }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ remolque_id: selectedRemolqueId }),
     });
     if (res.ok) {
       await fetchVehiculos();
@@ -298,7 +300,7 @@ const Flota = () => {
 
   const handleDesvincular = async (vehiculoId) => {
     if (!window.confirm('¿Desvincular el remolque de este vehículo?')) return;
-    await fetch(`${API}/vehiculos/${vehiculoId}/desvincular-remolque`, { method: 'POST' });
+    await fetch(`${API}/vehiculos/${vehiculoId}/desvincular-remolque`, { method: 'POST', credentials: 'include' });
     await fetchVehiculos();
     await fetchRemolques();
   };
@@ -360,7 +362,7 @@ const Flota = () => {
         <header className="dashboard-header">
           <button className="menu-toggle" onClick={() => setSidebarOpen(!sidebarOpen)} data-testid="menu-toggle-btn"><Menu size={24} /></button>
           <div className="header-right">
-            <span className="user-name" data-testid="user-name">Monica Arcila</span>
+            <span className="user-name" data-testid="user-name">{user?.name || 'Usuario'}</span>
             <button className="user-avatar" data-testid="user-avatar-btn"><User size={20} /></button>
           </div>
         </header>

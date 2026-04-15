@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, FileText, Plus, TrendingUp, Bell, Settings, Menu, User, MapPin, ChevronRight, Star, X, Search, ChevronDown, Truck, AlertCircle, Check } from 'lucide-react';
+import { useAuth } from '@/AuthContext';
 import COLOMBIA_DATA from '@/data/colombiaData';
 import VEHICULOS_DATA from '@/data/vehiculosData';
 import '@/pages/CreacionOfertas.css';
@@ -244,6 +245,7 @@ const emptyDestinatario = () => ({ nombre: '', identificacion: '' });
 /* ---- Main Page ---- */
 const CreacionOfertas = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [favoritos, setFavoritos] = useState([]);
@@ -428,7 +430,7 @@ const CreacionOfertas = () => {
 
   const fetchFavoritos = async () => {
     try {
-      const res = await fetch(`${API}/direcciones-favoritas`);
+      const res = await fetch(`${API}/direcciones-favoritas`, { credentials: 'include' });
       if (res.ok) setFavoritos(await res.json());
     } catch (e) { console.error(e); }
   };
@@ -623,6 +625,7 @@ const CreacionOfertas = () => {
       const res = await fetch(`${API}/ofertas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
       if (res.ok) {
@@ -764,7 +767,7 @@ const CreacionOfertas = () => {
         <header className="dashboard-header">
           <button className="menu-toggle" onClick={() => setSidebarOpen(!sidebarOpen)} data-testid="menu-toggle-btn"><Menu size={24} /></button>
           <div className="header-right">
-            <span className="user-name" data-testid="user-name">Monica Arcila</span>
+            <span className="user-name" data-testid="user-name">{user?.name || 'Usuario'}</span>
             <button className="user-avatar" data-testid="user-avatar-btn"><User size={20} /></button>
           </div>
         </header>
@@ -1200,3 +1203,4 @@ const CreacionOfertas = () => {
 };
 
 export default CreacionOfertas;
+;

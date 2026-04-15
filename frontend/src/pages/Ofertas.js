@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, FileText, Plus, TrendingUp, Bell, Settings, Menu, User, Filter, Search, MapPin, Package, Calendar, Loader2, Truck, DollarSign, Trash2 } from 'lucide-react';
+import { useAuth } from '@/AuthContext';
 import '@/pages/Ofertas.css';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const Ofertas = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [ofertas, setOfertas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,7 +38,7 @@ const Ofertas = () => {
   const handleDelete = async (ofertaId) => {
     if (!window.confirm('¿Estás seguro de que deseas eliminar esta oferta? Se borrarán todos los datos asociados.')) return;
     try {
-      const res = await fetch(`${API}/ofertas/${ofertaId}`, { method: 'DELETE' });
+      const res = await fetch(`${API}/ofertas/${ofertaId}`, { method: 'DELETE', credentials: 'include' });
       if (res.ok) fetchOfertas();
     } catch (e) { console.error(e); }
   };
@@ -67,7 +69,7 @@ const Ofertas = () => {
         <header className="dashboard-header">
           <button className="menu-toggle" onClick={() => setSidebarOpen(!sidebarOpen)} data-testid="menu-toggle-btn"><Menu size={24} /></button>
           <div className="header-right">
-            <span className="user-name" data-testid="user-name">Monica Arcila</span>
+            <span className="user-name" data-testid="user-name">{user?.name || 'Usuario'}</span>
             <button className="user-avatar" data-testid="user-avatar-btn"><User size={20} /></button>
           </div>
         </header>
