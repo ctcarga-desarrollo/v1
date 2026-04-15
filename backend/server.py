@@ -289,7 +289,7 @@ async def create_oferta(request: Request, data: dict):
         "cargue": data.get("cargue", {}), "descargues": data.get("descargues", []),
         "vehiculo": data.get("vehiculo", {}), "condiciones": data.get("condiciones", {}),
         "fletes": data.get("fletes", {}), "info_cargue": data.get("info_cargue", {}),
-        "estado": "Sin Asignar", "created_at": now, "updated_at": now,
+        "estado": "SIN ASIGNAR", "created_at": now, "updated_at": now,
     }
     await db.ofertas.insert_one(doc)
     return await db.ofertas.find_one({"id": doc["id"]}, {"_id": 0})
@@ -311,9 +311,9 @@ async def get_stats(request: Request):
     check_role(user, ROLE_ALL)
     tid = user["tenant_id"]
     total = await db.ofertas.count_documents({"tenant_id": tid})
-    sin_asignar = await db.ofertas.count_documents({"tenant_id": tid, "estado": "Sin Asignar"})
-    activas = await db.ofertas.count_documents({"tenant_id": tid, "estado": "Activa"})
-    completadas = await db.ofertas.count_documents({"tenant_id": tid, "estado": "Completada"})
+    sin_asignar = await db.ofertas.count_documents({"tenant_id": tid, "estado": {"$in": ["Sin Asignar", "SIN ASIGNAR"]}})
+    activas = await db.ofertas.count_documents({"tenant_id": tid, "estado": {"$in": ["Activa", "ASIGNADO", "EN PROCESO DE CARGUE", "EN RUTA", "EN PROCESO DE DESCARGUE"]}})
+    completadas = await db.ofertas.count_documents({"tenant_id": tid, "estado": {"$in": ["Completada", "FINALIZADA"]}})
     return {"total_ofertas": total, "sin_asignar": sin_asignar, "activas": activas, "completadas": completadas}
 
 # ==================== DIRECCIONES FAVORITAS ====================
