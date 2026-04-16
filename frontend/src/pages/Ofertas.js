@@ -38,6 +38,10 @@ const Ofertas = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('');
   const [selectedOferta, setSelectedOferta] = useState(null);
+  
+  // Modales de asignación de vehículos
+  const [showModalConfirm, setShowModalConfirm] = useState(false);
+  const [showModalPublicar, setShowModalPublicar] = useState(false);
 
   const fetchOfertas = useCallback(async () => {
     setLoading(true);
@@ -79,6 +83,35 @@ const Ofertas = () => {
   const canDeleteOrCancel = (estado) => {
     const upper = (estado || '').toUpperCase();
     return upper === 'SIN ASIGNAR' || upper === 'ASIGNADO';
+  };
+
+  const handleAsignarVehiculos = () => {
+    setShowModalConfirm(true);
+  };
+
+  const handleConfirmYes = () => {
+    setShowModalConfirm(false);
+    setShowModalPublicar(true);
+  };
+
+  const handleConfirmNo = () => {
+    setShowModalConfirm(false);
+  };
+
+  const handlePublicar = async () => {
+    // Aquí irá la lógica de publicación
+    console.log('Publicando oferta:', selectedOferta.codigo_oferta);
+    setShowModalPublicar(false);
+    alert('Oferta publicada exitosamente. La asignación comenzará 24 horas antes de la fecha programada.');
+  };
+
+  const handleCerrarPublicar = () => {
+    setShowModalPublicar(false);
+  };
+
+  const formatCurrency = (value) => {
+    if (!value) return '$0';
+    return `$${Number(value).toLocaleString('es-CO')}`;
   };
 
   return (
@@ -163,7 +196,7 @@ const Ofertas = () => {
                         <th>Remitente</th>
                         <th>Fecha de Cargue</th>
                         <th>Estado</th>
-                        <th>Acción</th>
+                        <th>Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -184,9 +217,22 @@ const Ofertas = () => {
                             </span>
                           </td>
                           <td>
-                            <button className="btn-ver" onClick={() => setSelectedOferta(oferta)} data-testid={`ver-btn-${oferta.id}`}>
-                              <Eye size={14} /> Ver
-                            </button>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                              <button 
+                                className="btn-asignar-table" 
+                                onClick={() => {
+                                  setSelectedOferta(oferta);
+                                  handleAsignarVehiculos();
+                                }} 
+                                data-testid={`asignar-btn-${oferta.id}`}
+                                title="Asignar vehículos"
+                              >
+                                <Truck size={14} /> Asignar
+                              </button>
+                              <button className="btn-ver" onClick={() => setSelectedOferta(oferta)} data-testid={`ver-btn-${oferta.id}`}>
+                                <Eye size={14} /> Ver
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -293,7 +339,7 @@ const Ofertas = () => {
 
               {/* Acciones */}
               <div className="detail-actions">
-                <button className="btn-asignar" data-testid="btn-asignar-vehiculos">
+                <button className="btn-asignar" onClick={handleAsignarVehiculos} data-testid="btn-asignar-vehiculos">
                   <Truck size={16} /> Asignar Vehículos
                 </button>
                 {canDeleteOrCancel(selectedOferta.estado) && (
@@ -316,6 +362,109 @@ const Ofertas = () => {
 
         </div>
       </main>
+
+      {/* ========== MODAL 1: CONFIRMACIÓN ========== */}
+      {showModalConfirm && selectedOferta && (
+        <div className="modal-overlay" data-testid="modal-confirm-asignacion">
+          <div className="modal-content modal-asignacion">
+            <div className="modal-header">
+              <h3>Confirmación de Publicación</h3>
+            </div>
+            <div className="modal-body">
+              <p className="modal-intro">
+                Está a punto de publicar la oferta No. <strong>{selectedOferta.codigo_oferta}</strong>
+              </p>
+              
+              <div className="modal-info-grid">
+                <div className="modal-info-item">
+                  <span className="modal-info-label">Cargue:</span>
+                  <span className="modal-info-value">{selectedOferta.cargue?.direccionConstruida || '-'}</span>
+                </div>
+                
+                <div className="modal-info-item">
+                  <span className="modal-info-label">Descargue:</span>
+                  <span className="modal-info-value">
+                    {selectedOferta.descargues && selectedOferta.descargues.length > 0
+                      ? selectedOferta.descargues.map((d, i) => (
+                          <span key={i}>
+                            {d.direccionConstruida || '-'}
+                            {i < selectedOferta.descargues.length - 1 && <br />}
+                          </span>
+                        ))
+                      : '-'}
+                  </span>
+                </div>
+                
+                <div className="modal-info-item">
+                  <span className="modal-info-label">Valor del flete:</span>
+                  <span className="modal-info-value precio">{formatCurrency(selectedOferta.fletes?.valorTotal)}</span>
+                </div>
+                
+                <div className="modal-info-item">
+                  <span className="modal-info-label">Anticipo:</span>
+                  <span className="modal-info-value">{formatCurrency(selectedOferta.fletes?.valorAnticipo)}</span>
+                </div>
+                
+                <div className="modal-info-item">
+                  <span className="modal-info-label">Fecha de pago:</span>
+                  <span className="modal-info-value">{selectedOferta.fletes?.fechaPago || '-'}</span>
+                </div>
+              </div>
+              
+              <p className="modal-question">¿Desea continuar?</p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-modal-secondary" onClick={handleConfirmNo} data-testid="btn-confirm-no">
+                No
+              </button>
+              <button className="btn-modal-primary" onClick={handleConfirmYes} data-testid="btn-confirm-yes">
+                Sí
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========== MODAL 2: PUBLICAR ========== */}
+      {showModalPublicar && selectedOferta && (
+        <div className="modal-overlay" data-testid="modal-publicar-asignacion">
+          <div className="modal-content modal-asignacion">
+            <div className="modal-header">
+              <h3>Información de Publicación</h3>
+            </div>
+            <div className="modal-body">
+              <p className="modal-intro"><strong>Recuerde:</strong></p>
+              
+              <ul className="modal-info-list">
+                <li>
+                  La asignación iniciará <strong>24 horas antes</strong> de la fecha programada de cargue.
+                </li>
+                <li>
+                  La oferta se enviará a vehículos ubicados a <strong>menos de 20 km</strong> de la zona de cargue y que cumplan los requisitos de la oferta.
+                </li>
+                <li>
+                  El orden de prioridad será:
+                  <ol className="modal-priority-list">
+                    <li>Flota propia</li>
+                    <li>Flota vinculada</li>
+                    <li>Terceros</li>
+                  </ol>
+                </li>
+              </ul>
+              
+              <p className="modal-question">¿Desea realizar la publicación?</p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-modal-secondary" onClick={handleCerrarPublicar} data-testid="btn-publicar-cerrar">
+                Cerrar
+              </button>
+              <button className="btn-modal-primary" onClick={handlePublicar} data-testid="btn-publicar-confirmar">
+                Publicar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

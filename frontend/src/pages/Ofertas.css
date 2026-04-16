@@ -192,6 +192,26 @@
   background: #dbeafe;
 }
 
+.btn-asignar-table {
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #059669;
+  background: #f0fdf4;
+  border: 1px solid #6ee7b7;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s;
+}
+.btn-asignar-table:hover {
+  background: #d1fae5;
+  transform: translateY(-1px);
+}
+
+
 /* ===== Detail View ===== */
 .oferta-detail {
   animation: fadeIn 0.2s ease;
@@ -385,4 +405,209 @@
   }
   .detail-top { flex-direction: column; gap: 12px; }
   .detail-actions { flex-direction: column; }
+}
+
+
+/* ===== Modales de Asignación ===== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content.modal-asignacion {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-header {
+  padding: 24px 24px 16px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #1a202c;
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+.modal-intro {
+  font-size: 15px;
+  color: #374151;
+  margin: 0 0 20px 0;
+  line-height: 1.6;
+}
+
+.modal-intro strong {
+  color: #1a202c;
+  font-weight: 600;
+}
+
+.modal-info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.modal-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.modal-info-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.modal-info-value {
+  font-size: 15px;
+  color: #1a202c;
+  font-weight: 500;
+}
+
+.modal-info-value.precio {
+  color: #059669;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.modal-question {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a202c;
+  margin: 24px 0 0 0;
+  text-align: center;
+}
+
+.modal-info-list {
+  margin: 20px 0;
+  padding-left: 20px;
+  color: #374151;
+}
+
+.modal-info-list li {
+  margin-bottom: 12px;
+  line-height: 1.6;
+  font-size: 15px;
+}
+
+.modal-info-list strong {
+  color: #1a202c;
+  font-weight: 600;
+}
+
+.modal-priority-list {
+  margin: 12px 0 0 0;
+  padding-left: 20px;
+  list-style-type: decimal;
+}
+
+.modal-priority-list li {
+  margin-bottom: 8px;
+  color: #1a202c;
+  font-weight: 500;
+}
+
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.btn-modal-primary {
+  padding: 10px 24px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-modal-primary:hover {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.btn-modal-secondary {
+  padding: 10px 24px;
+  background: white;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-modal-secondary:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+@media (max-width: 640px) {
+  .modal-content.modal-asignacion {
+    max-width: 100%;
+    margin: 10px;
+  }
+  
+  .modal-footer {
+    flex-direction: column-reverse;
+  }
+  
+  .btn-modal-primary,
+  .btn-modal-secondary {
+    width: 100%;
+  }
 }
