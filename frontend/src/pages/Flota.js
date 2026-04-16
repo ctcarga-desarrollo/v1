@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, FileText, Plus, TrendingUp, Bell, Settings, Menu, User, Truck, Search, Edit2, Trash2, Link2, Unlink, ArrowLeft, Upload, X, FileCheck, Calendar, Shield, Wrench, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/AuthContext';
+import VEHICULOS_DATA from '@/data/vehiculosData';
 import '@/pages/Flota.css';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -13,7 +14,8 @@ const TIPOS_REMOLQUE = ["Furgón","Plana","Cisterna","Cama baja","Estacas","Volc
 
 const emptyVehicle = () => ({
   placa: '', licencia_transito_no: '', marca: '', linea: '', modelo: '',
-  clase_vehiculo: '', tipo_carroceria: '', combustible: '', numero_motor: '', vin: '',
+  clase_vehiculo: '', configuracion: '', tipo_vehiculo: '', carroceria: '', tipo_carga: '',
+  tipo_carroceria: '', combustible: '', numero_motor: '', vin: '',
   propietario: '', identificacion_propietario: '', fecha_matricula: '',
   tarjeta_operaciones: { numero: '', fecha_inicio: '', fecha_fin: '' },
   soat: { numero_poliza: '', aseguradora: '', fecha_inicio: '', fecha_fin: '' },
@@ -81,6 +83,29 @@ const Flota = () => {
     } catch (e) { console.error(e); }
   }, [searchTerm]);
 
+  // Cascading options for vehicle configuration (from VEHICULOS_DATA)
+  const configuracionOptions = useMemo(() => [...new Set(VEHICULOS_DATA.map(v => v.configuracion))], []);
+
+  const tipoVehiculoOptions = useMemo(() => {
+    if (!vehicleForm.configuracion) return [];
+    return [...new Set(VEHICULOS_DATA.filter(v => v.configuracion === vehicleForm.configuracion).map(v => v.tipo_vehiculo))];
+  }, [vehicleForm.configuracion]);
+
+  const carroceriaOptions = useMemo(() => {
+    let filtered = VEHICULOS_DATA;
+    if (vehicleForm.configuracion) filtered = filtered.filter(v => v.configuracion === vehicleForm.configuracion);
+    if (vehicleForm.tipo_vehiculo) filtered = filtered.filter(v => v.tipo_vehiculo === vehicleForm.tipo_vehiculo);
+    return [...new Set(filtered.map(v => v.carroceria))];
+  }, [vehicleForm.configuracion, vehicleForm.tipo_vehiculo]);
+
+  const tipoCargaOptions = useMemo(() => {
+    let filtered = VEHICULOS_DATA;
+    if (vehicleForm.configuracion) filtered = filtered.filter(v => v.configuracion === vehicleForm.configuracion);
+    if (vehicleForm.tipo_vehiculo) filtered = filtered.filter(v => v.tipo_vehiculo === vehicleForm.tipo_vehiculo);
+    if (vehicleForm.carroceria) filtered = filtered.filter(v => v.carroceria === vehicleForm.carroceria);
+    return [...new Set(filtered.map(v => v.tipo_carga))];
+  }, [vehicleForm.configuracion, vehicleForm.tipo_vehiculo, vehicleForm.carroceria]);
+
   useEffect(() => {
     const t = setTimeout(() => { fetchVehiculos(); fetchRemolques(); }, 300);
     return () => clearTimeout(t);
@@ -125,6 +150,24 @@ const Flota = () => {
   const updateVF = (field, val) => setVehicleForm(prev => ({ ...prev, [field]: val }));
   const updateVFNested = (section, field, val) => setVehicleForm(prev => ({ ...prev, [section]: { ...prev[section], [field]: val } }));
 
+  // Handle cascading updates for vehicle configuration fields
+  const updateVehicleConfig = (field, value) => {
+    setVehicleForm(prev => {
+      const updated = { ...prev, [field]: value };
+      if (field === 'configuracion') {
+        updated.tipo_vehiculo = '';
+        updated.carroceria = '';
+        updated.tipo_carga = '';
+      } else if (field === 'tipo_vehiculo') {
+        updated.carroceria = '';
+        updated.tipo_carga = '';
+      } else if (field === 'carroceria') {
+        updated.tipo_carga = '';
+      }
+      return updated;
+    });
+  };
+
   /* File Upload */
   const handleFileSelect = async (docType, file) => {
     if (!file) return;
@@ -155,6 +198,10 @@ const Flota = () => {
     if (!f.linea.trim()) errs.push('Línea');
     if (!f.modelo) errs.push('Modelo');
     if (!f.clase_vehiculo) errs.push('Clase de vehículo');
+    if (!f.configuracion) errs.push('Configuración');
+    if (!f.tipo_vehiculo) errs.push('Tipo de vehículo');
+    if (!f.carroceria) errs.push('Carrocería');
+    if (!f.tipo_carga) errs.push('Tipo de carga');
     if (!f.tipo_carroceria.trim()) errs.push('Tipo de carrocería');
     if (!f.combustible) errs.push('Combustible');
     if (!f.numero_motor.trim()) errs.push('Número de motor');
@@ -515,7 +562,7 @@ const Flota = () => {
               {/* Datos del Vehículo */}
               <div className="form-card">
                 <h3 className="form-card-title"><Truck size={18} /> Datos del Vehículo</h3>
-                <div className="form-row cols-3">
+                <div className="form-row cols-4">
                   <div className="form-group">
                     <label>Placa *</label>
                     <input type="text" className="form-input" placeholder="ABC123" value={vehicleForm.placa} onChange={(e) => updateVF('placa', e.target.value.toUpperCase())} maxLength={7} data-testid="placa-input" />
@@ -531,12 +578,12 @@ const Flota = () => {
                       {MARCAS.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
                   </div>
-                </div>
-                <div className="form-row cols-3">
                   <div className="form-group">
                     <label>Línea *</label>
                     <input type="text" className="form-input" value={vehicleForm.linea} onChange={(e) => updateVF('linea', e.target.value)} data-testid="linea-input" />
                   </div>
+                </div>
+                <div className="form-row cols-4">
                   <div className="form-group">
                     <label>Modelo *</label>
                     <input type="number" className="form-input" placeholder="2024" value={vehicleForm.modelo} onChange={(e) => updateVF('modelo', e.target.value)} data-testid="modelo-input" />
@@ -548,8 +595,36 @@ const Flota = () => {
                       {CLASES_VEHICULO.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
+                  <div className="form-group">
+                    <label>Configuración *</label>
+                    <select className="form-input" value={vehicleForm.configuracion} onChange={(e) => updateVehicleConfig('configuracion', e.target.value)} data-testid="configuracion-select">
+                      <option value="">Seleccionar configuración...</option>
+                      {configuracionOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Tipo de vehículo *</label>
+                    <select className="form-input" value={vehicleForm.tipo_vehiculo} onChange={(e) => updateVehicleConfig('tipo_vehiculo', e.target.value)} disabled={!vehicleForm.configuracion} data-testid="tipo-vehiculo-select">
+                      <option value="">Seleccionar tipo...</option>
+                      {tipoVehiculoOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
                 </div>
-                <div className="form-row cols-3">
+                <div className="form-row cols-4">
+                  <div className="form-group">
+                    <label>Carrocería *</label>
+                    <select className="form-input" value={vehicleForm.carroceria} onChange={(e) => updateVehicleConfig('carroceria', e.target.value)} disabled={!vehicleForm.configuracion} data-testid="carroceria-select">
+                      <option value="">Seleccionar carrocería...</option>
+                      {carroceriaOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Tipo de carga *</label>
+                    <select className="form-input" value={vehicleForm.tipo_carga} onChange={(e) => updateVehicleConfig('tipo_carga', e.target.value)} disabled={!vehicleForm.configuracion} data-testid="tipo-carga-select">
+                      <option value="">Seleccionar tipo de carga...</option>
+                      {tipoCargaOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
                   <div className="form-group">
                     <label>Tipo de carrocería *</label>
                     <input type="text" className="form-input" value={vehicleForm.tipo_carroceria} onChange={(e) => updateVF('tipo_carroceria', e.target.value)} data-testid="carroceria-input" />
@@ -561,12 +636,12 @@ const Flota = () => {
                       {COMBUSTIBLES.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
+                </div>
+                <div className="form-row cols-4">
                   <div className="form-group">
                     <label>Número de motor *</label>
                     <input type="text" className="form-input" value={vehicleForm.numero_motor} onChange={(e) => updateVF('numero_motor', e.target.value)} data-testid="motor-input" />
                   </div>
-                </div>
-                <div className="form-row cols-3">
                   <div className="form-group">
                     <label>VIN *</label>
                     <input type="text" className="form-input" value={vehicleForm.vin} onChange={(e) => updateVF('vin', e.target.value)} data-testid="vin-input" />
@@ -580,7 +655,7 @@ const Flota = () => {
                     <input type="text" className="form-input" value={vehicleForm.identificacion_propietario} onChange={(e) => updateVF('identificacion_propietario', e.target.value)} data-testid="id-propietario-input" />
                   </div>
                 </div>
-                <div className="form-row cols-3">
+                <div className="form-row cols-4">
                   <div className="form-group">
                     <label>Fecha de matrícula *</label>
                     <input type="date" className="form-input" value={vehicleForm.fecha_matricula} onChange={(e) => updateVF('fecha_matricula', e.target.value)} data-testid="fecha-matricula-input" />
