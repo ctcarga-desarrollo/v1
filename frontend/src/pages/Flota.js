@@ -13,6 +13,7 @@ const COMBUSTIBLES = ["Gasolina","Diésel","GNV","Eléctrico","Híbrido"];
 const TIPOS_REMOLQUE = ["Furgón","Plana","Cisterna","Cama baja","Estacas","Volco","Portacontenedor","Tanque","Refrigerada","Carbonera","Niñera","Minimula","Planchón"];
 
 const emptyVehicle = () => ({
+  tipo_propiedad: '', // 'flota_propia' | 'tercero_vinculado'
   placa: '', licencia_transito_no: '', marca: '', linea: '', modelo: '',
   configuracion: '', tipo_vehiculo: '', carroceria: '', tipo_carga: '',
   combustible: '', numero_motor: '', vin: '',
@@ -192,6 +193,7 @@ const Flota = () => {
   const validateVehicle = () => {
     const errs = [];
     const f = vehicleForm;
+    if (!f.tipo_propiedad) errs.push('Tipo de propiedad (Flota propia o Tercero vinculado)');
     if (!f.placa.trim()) errs.push('Placa');
     if (!f.licencia_transito_no.trim()) errs.push('Licencia de tránsito No');
     if (!f.marca) errs.push('Marca');
@@ -560,6 +562,94 @@ const Flota = () => {
               {/* Datos del Vehículo */}
               <div className="form-card">
                 <h3 className="form-card-title"><Truck size={18} /> Datos del Vehículo</h3>
+                
+                {/* Tipo de Propiedad - Selección exclusiva obligatoria */}
+                <div className="form-row" style={{ marginBottom: '24px', paddingBottom: '24px', borderBottom: '1px solid #e5e7eb' }}>
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ fontSize: '15px', fontWeight: '600', marginBottom: '12px', display: 'block', color: '#1a202c' }}>
+                      Tipo de Propiedad *
+                    </label>
+                    <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+                      <label 
+                        className="checkbox-label-exclusive" 
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '10px', 
+                          cursor: 'pointer',
+                          padding: '12px 16px',
+                          border: vehicleForm.tipo_propiedad === 'flota_propia' ? '2px solid #2563eb' : '2px solid #d1d5db',
+                          borderRadius: '8px',
+                          background: vehicleForm.tipo_propiedad === 'flota_propia' ? '#eff6ff' : 'white',
+                          transition: 'all 0.2s',
+                          minWidth: '220px'
+                        }}
+                        data-testid="tipo-flota-propia"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={vehicleForm.tipo_propiedad === 'flota_propia'}
+                          onChange={() => updateVF('tipo_propiedad', 'flota_propia')}
+                          style={{ 
+                            width: '18px', 
+                            height: '18px', 
+                            cursor: 'pointer',
+                            accentColor: '#2563eb'
+                          }}
+                        />
+                        <span style={{ 
+                          fontSize: '14px', 
+                          fontWeight: vehicleForm.tipo_propiedad === 'flota_propia' ? '600' : '500',
+                          color: vehicleForm.tipo_propiedad === 'flota_propia' ? '#2563eb' : '#4b5563'
+                        }}>
+                          Vehículo de flota propia
+                        </span>
+                      </label>
+                      
+                      <label 
+                        className="checkbox-label-exclusive" 
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '10px', 
+                          cursor: 'pointer',
+                          padding: '12px 16px',
+                          border: vehicleForm.tipo_propiedad === 'tercero_vinculado' ? '2px solid #2563eb' : '2px solid #d1d5db',
+                          borderRadius: '8px',
+                          background: vehicleForm.tipo_propiedad === 'tercero_vinculado' ? '#eff6ff' : 'white',
+                          transition: 'all 0.2s',
+                          minWidth: '220px'
+                        }}
+                        data-testid="tipo-tercero-vinculado"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={vehicleForm.tipo_propiedad === 'tercero_vinculado'}
+                          onChange={() => updateVF('tipo_propiedad', 'tercero_vinculado')}
+                          style={{ 
+                            width: '18px', 
+                            height: '18px', 
+                            cursor: 'pointer',
+                            accentColor: '#2563eb'
+                          }}
+                        />
+                        <span style={{ 
+                          fontSize: '14px', 
+                          fontWeight: vehicleForm.tipo_propiedad === 'tercero_vinculado' ? '600' : '500',
+                          color: vehicleForm.tipo_propiedad === 'tercero_vinculado' ? '#2563eb' : '#4b5563'
+                        }}>
+                          Vehículo de tercero vinculado
+                        </span>
+                      </label>
+                    </div>
+                    {!vehicleForm.tipo_propiedad && (
+                      <p style={{ fontSize: '12px', color: '#dc2626', marginTop: '8px' }}>
+                        * Debe seleccionar un tipo de propiedad
+                      </p>
+                    )}
+                  </div>
+                </div>
+
                 <div className="form-row cols-4">
                   <div className="form-group">
                     <label>Placa *</label>
