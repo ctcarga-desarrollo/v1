@@ -88,6 +88,62 @@ def check_role(user: dict, allowed: set):
     if user.get("rol") not in allowed:
         raise HTTPException(status_code=403, detail="No tiene permisos para esta acción")
 
+# ==================== ACTIVITY LOG ====================
+
+async def registrar_actividad(
+    usuario: dict,
+    accion: str,  # 'CREAR', 'ACTUALIZAR', 'ELIMINAR', 'CAMBIO_ESTADO'
+    modulo: str,  # 'ofertas', 'vehiculos', 'remolques', 'direcciones_favoritas'
+    registro_id: str,
+    detalles: str,
+    ip_address: str,
+    datos_anteriores: dict = None,
+    datos_nuevos: dict = None
+):
+    """
+    Registra una actividad en el log del sistema.
+    """
+    try:
+        log_entry = {
+            "usuario_id": usuario.get("_id"),
+            "usuario_nombre": usuario.get("name", "Unknown"),
+            "usuario_email": usuario.get("email", ""),
+            "accion": accion,
+            "modulo": modulo,
+            "registro_id": registro_id,
+            "detalles": detalles,
+            "datos_anteriores": datos_anteriores,
+            "datos_nuevos": datos_nuevos,
+            "fecha_hora": datetime.now(timezone.utc),
+            "ip_address": ip_address,
+            "empresa_id": usuario.get("empresa_id", ""),
+            "empresa_nombre": usuario.get("empresa_nombre", ""),
+            "tenant_id": usuario.get("tenant_id", "")
+        }
+        await db.activity_logs.insert_one(log_entry)
+        logger.info(f"Log registrado: {accion} en {modulo} por {usuario.get('name')}")
+    except Exception as e:
+        logger.error(f"Error al registrar actividad: {str(e)}")
+
+def get_client_ip(request: Request) -> str:
+    """
+    Obtiene la dirección IP del cliente desde la request.
+    """
+    # Intenta obtener la IP real desde headers de proxy
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip
+    
+    # Fallback a la IP directa del cliente
+    if request.client:
+        return request.client.host
+    
+    return "unknown"
+
 # ==================== INDEXES ====================
 
 async def create_indexes():
@@ -106,6 +162,15 @@ async def create_indexes():
     await db.usuarios.create_index("email", unique=True)
     await db.vehiculos.create_index([("placa", 1), ("tenant_id", 1)], unique=True)
     await db.remolques.create_index([("placa", 1), ("tenant_id", 1)], unique=True)
+    
+    # Índices para Activity Logs
+    await db.activity_logs.create_index([("fecha_hora", -1)])
+    await db.activity_logs.create_index([("usuario_id", 1)])
+    await db.activity_logs.create_index([("modulo", 1)])
+    await db.activity_logs.create_index([("accion", 1)])
+    await db.activity_logs.create_index([("empresa_id", 1)])
+    await db.activity_logs.create_index([("tenant_id", 1)])
+    
     logger.info("MongoDB indexes created")
 
 # ==================== OFFER ID GENERATOR ====================
@@ -292,15 +357,43 @@ async def create_oferta(request: Request, data: dict):
         "estado": "SIN ASIGNAR", "created_at": now, "updated_at": now,
     }
     await db.ofertas.insert_one(doc)
+    
+    # Registrar actividad
+    await registrar_actividad(
+        usuario=user,
+        accion="CREAR",
+        modulo="ofertas",
+        registro_id=doc["id"],
+        detalles=f"Creación de oferta {codigo} - Remitente: {data.get('remitente', 'N/A')}",
+        ip_address=get_client_ip(request),
+        datos_nuevos={"codigo_oferta": codigo, "remitente": data.get("remitente", ""), "estado": "SIN ASIGNAR"}
+    )
+    
     return await db.ofertas.find_one({"id": doc["id"]}, {"_id": 0})
 
 @api_router.delete("/ofertas/{oferta_id}")
 async def delete_oferta(request: Request, oferta_id: str):
     user = await get_current_user(request)
     check_role(user, ROLE_WRITE)
-    result = await db.ofertas.delete_one({"id": oferta_id, "tenant_id": user["tenant_id"]})
-    if result.deleted_count == 0:
+    
+    # Obtener datos de la oferta antes de eliminar
+    oferta = await db.ofertas.find_one({"id": oferta_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not oferta:
         raise HTTPException(status_code=404, detail="Oferta no encontrada")
+    
+    await db.ofertas.delete_one({"id": oferta_id, "tenant_id": user["tenant_id"]})
+    
+    # Registrar actividad
+    await registrar_actividad(
+        usuario=user,
+        accion="ELIMINAR",
+        modulo="ofertas",
+        registro_id=oferta_id,
+        detalles=f"Eliminación de oferta {oferta.get('codigo_oferta', 'N/A')} - Remitente: {oferta.get('remitente', 'N/A')}",
+        ip_address=get_client_ip(request),
+        datos_anteriores={"codigo_oferta": oferta.get("codigo_oferta"), "remitente": oferta.get("remitente"), "estado": oferta.get("estado")}
+    )
+    
     return {"message": "Oferta eliminada exitosamente"}
 
 # ==================== STATS ====================
@@ -336,15 +429,43 @@ async def create_favorita(request: Request, data: dict):
         "direccion": data.get("direccion", {}), "created_at": now,
     }
     await db.direcciones_favoritas.insert_one(doc)
+    
+    # Registrar actividad
+    await registrar_actividad(
+        usuario=user,
+        accion="CREAR",
+        modulo="direcciones_favoritas",
+        registro_id=doc["id"],
+        detalles=f"Creación de dirección favorita: {data.get('nombre_favorito', 'N/A')}",
+        ip_address=get_client_ip(request),
+        datos_nuevos={"nombre_favorito": data.get("nombre_favorito"), "direccion": data.get("direccion", {}).get("direccionConstruida", "")}
+    )
+    
     return await db.direcciones_favoritas.find_one({"id": doc["id"]}, {"_id": 0})
 
 @api_router.delete("/direcciones-favoritas/{fav_id}")
 async def delete_favorita(request: Request, fav_id: str):
     user = await get_current_user(request)
     check_role(user, ROLE_WRITE)
-    result = await db.direcciones_favoritas.delete_one({"id": fav_id, "tenant_id": user["tenant_id"]})
-    if result.deleted_count == 0:
+    
+    # Obtener datos antes de eliminar
+    favorita = await db.direcciones_favoritas.find_one({"id": fav_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not favorita:
         raise HTTPException(status_code=404, detail="Favorito no encontrado")
+    
+    await db.direcciones_favoritas.delete_one({"id": fav_id, "tenant_id": user["tenant_id"]})
+    
+    # Registrar actividad
+    await registrar_actividad(
+        usuario=user,
+        accion="ELIMINAR",
+        modulo="direcciones_favoritas",
+        registro_id=fav_id,
+        detalles=f"Eliminación de dirección favorita: {favorita.get('nombre_favorito', 'N/A')}",
+        ip_address=get_client_ip(request),
+        datos_anteriores={"nombre_favorito": favorita.get("nombre_favorito"), "direccion": favorita.get("direccion", {}).get("direccionConstruida", "")}
+    )
+    
     return {"message": "Favorito eliminado"}
 
 # ==================== VEHICULOS ====================
@@ -382,12 +503,30 @@ async def create_vehiculo(request: Request, data: dict):
         raise HTTPException(status_code=400, detail="Ya existe un vehículo con esta placa")
     doc = {**data, "id": str(uuid.uuid4()), "placa": placa, "tenant_id": user["tenant_id"], "created_at": now, "updated_at": now}
     await db.vehiculos.insert_one(doc)
+    
+    # Registrar actividad
+    await registrar_actividad(
+        usuario=user,
+        accion="CREAR",
+        modulo="vehiculos",
+        registro_id=doc["id"],
+        detalles=f"Creación de vehículo {placa} - Marca: {data.get('marca', 'N/A')} {data.get('linea', '')}",
+        ip_address=get_client_ip(request),
+        datos_nuevos={"placa": placa, "marca": data.get("marca"), "tipo_propiedad": data.get("tipo_propiedad")}
+    )
+    
     return await db.vehiculos.find_one({"id": doc["id"]}, {"_id": 0})
 
 @api_router.put("/vehiculos/{vehiculo_id}")
 async def update_vehiculo(request: Request, vehiculo_id: str, data: dict):
     user = await get_current_user(request)
     check_role(user, ROLE_WRITE)
+    
+    # Obtener datos anteriores
+    vehiculo_anterior = await db.vehiculos.find_one({"id": vehiculo_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not vehiculo_anterior:
+        raise HTTPException(status_code=404, detail="Vehículo no encontrado")
+    
     now = datetime.now(timezone.utc).isoformat()
     data.pop("id", None)
     data.pop("_id", None)
@@ -401,18 +540,45 @@ async def update_vehiculo(request: Request, vehiculo_id: str, data: dict):
     result = await db.vehiculos.find_one_and_update(
         {"id": vehiculo_id, "tenant_id": user["tenant_id"]}, {"$set": data}, return_document=True, projection={"_id": 0}
     )
-    if not result:
-        raise HTTPException(status_code=404, detail="Vehículo no encontrado")
+    
+    # Registrar actividad
+    await registrar_actividad(
+        usuario=user,
+        accion="ACTUALIZAR",
+        modulo="vehiculos",
+        registro_id=vehiculo_id,
+        detalles=f"Actualización de vehículo {vehiculo_anterior.get('placa', 'N/A')}",
+        ip_address=get_client_ip(request),
+        datos_anteriores={"placa": vehiculo_anterior.get("placa"), "marca": vehiculo_anterior.get("marca")},
+        datos_nuevos={"placa": data.get("placa", vehiculo_anterior.get("placa")), "marca": data.get("marca", vehiculo_anterior.get("marca"))}
+    )
+    
     return result
 
 @api_router.delete("/vehiculos/{vehiculo_id}")
 async def delete_vehiculo(request: Request, vehiculo_id: str):
     user = await get_current_user(request)
     check_role(user, ROLE_WRITE)
-    await db.remolques.update_many({"vehiculo_vinculado": vehiculo_id, "tenant_id": user["tenant_id"]}, {"$set": {"vehiculo_vinculado": None}})
-    result = await db.vehiculos.delete_one({"id": vehiculo_id, "tenant_id": user["tenant_id"]})
-    if result.deleted_count == 0:
+    
+    # Obtener datos antes de eliminar
+    vehiculo = await db.vehiculos.find_one({"id": vehiculo_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not vehiculo:
         raise HTTPException(status_code=404, detail="Vehículo no encontrado")
+    
+    await db.remolques.update_many({"vehiculo_vinculado": vehiculo_id, "tenant_id": user["tenant_id"]}, {"$set": {"vehiculo_vinculado": None}})
+    await db.vehiculos.delete_one({"id": vehiculo_id, "tenant_id": user["tenant_id"]})
+    
+    # Registrar actividad
+    await registrar_actividad(
+        usuario=user,
+        accion="ELIMINAR",
+        modulo="vehiculos",
+        registro_id=vehiculo_id,
+        detalles=f"Eliminación de vehículo {vehiculo.get('placa', 'N/A')} - {vehiculo.get('marca', '')} {vehiculo.get('linea', '')}",
+        ip_address=get_client_ip(request),
+        datos_anteriores={"placa": vehiculo.get("placa"), "marca": vehiculo.get("marca"), "tipo_propiedad": vehiculo.get("tipo_propiedad")}
+    )
+    
     return {"message": "Vehículo eliminado"}
 
 # ==================== REMOLQUES ====================
@@ -440,12 +606,30 @@ async def create_remolque(request: Request, data: dict):
         raise HTTPException(status_code=400, detail="Ya existe un remolque con esta placa")
     doc = {**data, "id": str(uuid.uuid4()), "placa": placa, "tenant_id": user["tenant_id"], "vehiculo_vinculado": None, "created_at": now, "updated_at": now}
     await db.remolques.insert_one(doc)
+    
+    # Registrar actividad
+    await registrar_actividad(
+        usuario=user,
+        accion="CREAR",
+        modulo="remolques",
+        registro_id=doc["id"],
+        detalles=f"Creación de remolque {placa} - Marca: {data.get('marca', 'N/A')}",
+        ip_address=get_client_ip(request),
+        datos_nuevos={"placa": placa, "marca": data.get("marca")}
+    )
+    
     return await db.remolques.find_one({"id": doc["id"]}, {"_id": 0})
 
 @api_router.put("/remolques/{remolque_id}")
 async def update_remolque(request: Request, remolque_id: str, data: dict):
     user = await get_current_user(request)
     check_role(user, ROLE_WRITE)
+    
+    # Obtener datos anteriores
+    remolque_anterior = await db.remolques.find_one({"id": remolque_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not remolque_anterior:
+        raise HTTPException(status_code=404, detail="Remolque no encontrado")
+    
     now = datetime.now(timezone.utc).isoformat()
     data.pop("id", None)
     data.pop("_id", None)
@@ -456,17 +640,44 @@ async def update_remolque(request: Request, remolque_id: str, data: dict):
     result = await db.remolques.find_one_and_update(
         {"id": remolque_id, "tenant_id": user["tenant_id"]}, {"$set": data}, return_document=True, projection={"_id": 0}
     )
-    if not result:
-        raise HTTPException(status_code=404, detail="Remolque no encontrado")
+    
+    # Registrar actividad
+    await registrar_actividad(
+        usuario=user,
+        accion="ACTUALIZAR",
+        modulo="remolques",
+        registro_id=remolque_id,
+        detalles=f"Actualización de remolque {remolque_anterior.get('placa', 'N/A')}",
+        ip_address=get_client_ip(request),
+        datos_anteriores={"placa": remolque_anterior.get("placa"), "marca": remolque_anterior.get("marca")},
+        datos_nuevos={"placa": data.get("placa", remolque_anterior.get("placa")), "marca": data.get("marca", remolque_anterior.get("marca"))}
+    )
+    
     return result
 
 @api_router.delete("/remolques/{remolque_id}")
 async def delete_remolque(request: Request, remolque_id: str):
     user = await get_current_user(request)
     check_role(user, ROLE_WRITE)
-    result = await db.remolques.delete_one({"id": remolque_id, "tenant_id": user["tenant_id"]})
-    if result.deleted_count == 0:
+    
+    # Obtener datos antes de eliminar
+    remolque = await db.remolques.find_one({"id": remolque_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not remolque:
         raise HTTPException(status_code=404, detail="Remolque no encontrado")
+    
+    await db.remolques.delete_one({"id": remolque_id, "tenant_id": user["tenant_id"]})
+    
+    # Registrar actividad
+    await registrar_actividad(
+        usuario=user,
+        accion="ELIMINAR",
+        modulo="remolques",
+        registro_id=remolque_id,
+        detalles=f"Eliminación de remolque {remolque.get('placa', 'N/A')} - {remolque.get('marca', '')}",
+        ip_address=get_client_ip(request),
+        datos_anteriores={"placa": remolque.get("placa"), "marca": remolque.get("marca")}
+    )
+    
     return {"message": "Remolque eliminado"}
 
 # ==================== VINCULACION ====================
@@ -489,6 +700,18 @@ async def vincular_remolque(request: Request, vehiculo_id: str, data: dict):
         raise HTTPException(status_code=400, detail="Este remolque ya está vinculado a otro vehículo")
     await db.remolques.update_one({"id": remolque_id}, {"$set": {"vehiculo_vinculado": vehiculo_id}})
     await db.vehiculos.update_one({"id": vehiculo_id}, {"$set": {"remolque_vinculado": remolque_id}})
+    
+    # Registrar actividad
+    await registrar_actividad(
+        usuario=user,
+        accion="CAMBIO_ESTADO",
+        modulo="vehiculos",
+        registro_id=vehiculo_id,
+        detalles=f"Vinculación de remolque {remolque.get('placa', 'N/A')} al vehículo {vehiculo.get('placa', 'N/A')}",
+        ip_address=get_client_ip(request),
+        datos_nuevos={"vehiculo_placa": vehiculo.get("placa"), "remolque_placa": remolque.get("placa"), "accion": "vincular"}
+    )
+    
     return {"message": "Remolque vinculado exitosamente"}
 
 @api_router.post("/vehiculos/{vehiculo_id}/desvincular-remolque")
@@ -499,9 +722,27 @@ async def desvincular_remolque(request: Request, vehiculo_id: str):
     if not vehiculo:
         raise HTTPException(status_code=404, detail="Vehículo no encontrado")
     remolque_id = vehiculo.get("remolque_vinculado")
+    
+    remolque_placa = "N/A"
     if remolque_id:
+        remolque = await db.remolques.find_one({"id": remolque_id}, {"_id": 0, "placa": 1})
+        if remolque:
+            remolque_placa = remolque.get("placa", "N/A")
         await db.remolques.update_one({"id": remolque_id}, {"$set": {"vehiculo_vinculado": None}})
+    
     await db.vehiculos.update_one({"id": vehiculo_id}, {"$set": {"remolque_vinculado": None}})
+    
+    # Registrar actividad
+    await registrar_actividad(
+        usuario=user,
+        accion="CAMBIO_ESTADO",
+        modulo="vehiculos",
+        registro_id=vehiculo_id,
+        detalles=f"Desvinculación de remolque {remolque_placa} del vehículo {vehiculo.get('placa', 'N/A')}",
+        ip_address=get_client_ip(request),
+        datos_anteriores={"vehiculo_placa": vehiculo.get("placa"), "remolque_placa": remolque_placa, "accion": "desvincular"}
+    )
+    
     return {"message": "Remolque desvinculado"}
 
 # ==================== FILE UPLOAD ====================
@@ -527,6 +768,68 @@ async def get_upload(filename: str):
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     return FileResponse(str(file_path))
+
+
+
+# ==================== ACTIVITY LOGS ====================
+
+@api_router.get("/activity-logs")
+async def get_activity_logs(
+    request: Request,
+    modulo: Optional[str] = Query(None),
+    accion: Optional[str] = Query(None),
+    usuario_id: Optional[str] = Query(None),
+    fecha_desde: Optional[str] = Query(None),
+    fecha_hasta: Optional[str] = Query(None),
+    limit: int = Query(100, le=500),
+    skip: int = Query(0, ge=0)
+):
+    """
+    Obtiene el historial de actividad del sistema con filtros opcionales.
+    """
+    user = await get_current_user(request)
+    check_role(user, ROLE_ALL)
+    
+    query = {"tenant_id": user["tenant_id"]}
+    
+    if modulo:
+        query["modulo"] = modulo
+    
+    if accion:
+        query["accion"] = accion
+    
+    if usuario_id:
+        query["usuario_id"] = usuario_id
+    
+    if fecha_desde or fecha_hasta:
+        query["fecha_hora"] = {}
+        if fecha_desde:
+            try:
+                fecha_desde_dt = datetime.fromisoformat(fecha_desde.replace('Z', '+00:00'))
+                query["fecha_hora"]["$gte"] = fecha_desde_dt
+            except (ValueError, AttributeError):
+                pass
+        if fecha_hasta:
+            try:
+                fecha_hasta_dt = datetime.fromisoformat(fecha_hasta.replace('Z', '+00:00'))
+                query["fecha_hora"]["$lte"] = fecha_hasta_dt
+            except (ValueError, AttributeError):
+                pass
+    
+    logs = await db.activity_logs.find(query, {"_id": 0}) \
+        .sort("fecha_hora", -1) \
+        .skip(skip) \
+        .limit(limit) \
+        .to_list(length=limit)
+    
+    total = await db.activity_logs.count_documents(query)
+    
+    return {
+        "logs": logs,
+        "total": total,
+        "limit": limit,
+        "skip": skip
+    }
 
 # ==================== BORRADOR (legacy, no auth needed but keep working) ====================
 
