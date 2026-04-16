@@ -217,9 +217,9 @@ const Ofertas = () => {
                             </span>
                           </td>
                           <td>
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                               <button 
-                                className="btn-asignar-table" 
+                                className="btn-icon-action btn-icon-asignar" 
                                 onClick={() => {
                                   setSelectedOferta(oferta);
                                   handleAsignarVehiculos();
@@ -227,10 +227,15 @@ const Ofertas = () => {
                                 data-testid={`asignar-btn-${oferta.id}`}
                                 title="Asignar vehículos"
                               >
-                                <Truck size={14} /> Asignar
+                                <Truck size={16} />
                               </button>
-                              <button className="btn-ver" onClick={() => setSelectedOferta(oferta)} data-testid={`ver-btn-${oferta.id}`}>
-                                <Eye size={14} /> Ver
+                              <button 
+                                className="btn-icon-action btn-icon-ver" 
+                                onClick={() => setSelectedOferta(oferta)} 
+                                data-testid={`ver-btn-${oferta.id}`}
+                                title="Ver detalle"
+                              >
+                                <Eye size={16} />
                               </button>
                             </div>
                           </td>
@@ -339,9 +344,6 @@ const Ofertas = () => {
 
               {/* Acciones */}
               <div className="detail-actions">
-                <button className="btn-asignar" onClick={handleAsignarVehiculos} data-testid="btn-asignar-vehiculos">
-                  <Truck size={16} /> Asignar Vehículos
-                </button>
                 {canDeleteOrCancel(selectedOferta.estado) && (
                   <>
                     {(selectedOferta.estado || '').toUpperCase() === 'SIN ASIGNAR' && (

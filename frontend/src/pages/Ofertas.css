@@ -211,6 +211,45 @@
   transform: translateY(-1px);
 }
 
+/* Botones de acción tipo icono */
+.btn-icon-action {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid;
+  position: relative;
+}
+
+.btn-icon-asignar {
+  background: #f0fdf4;
+  color: #059669;
+  border-color: #6ee7b7;
+}
+
+.btn-icon-asignar:hover {
+  background: #d1fae5;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.15);
+}
+
+.btn-icon-ver {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #93c5fd;
+}
+
+.btn-icon-ver:hover {
+  background: #dbeafe;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.15);
+}
+
 
 /* ===== Detail View ===== */
 .oferta-detail {
