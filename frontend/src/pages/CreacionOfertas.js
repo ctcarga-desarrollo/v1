@@ -182,7 +182,7 @@ const AddressForm = ({ address, setAddress, favoritos, title, index }) => {
           <input type="number" className="form-input" value={address.numeroSecundario} onChange={(e) => update('numeroSecundario', e.target.value)} data-testid={`num-secundario-${index}`} />
         </div>
         <div className="form-group">
-          <label>Letra / Bis / Complemento</label>
+          <label>Letra / Bis / Complemento/Placa</label>
           <input type="text" className="form-input" value={address.letraBis2} onChange={(e) => update('letraBis2', e.target.value)} data-testid={`letra-bis-2-${index}`} />
         </div>
       </div>
@@ -438,11 +438,27 @@ const CreacionOfertas = () => {
   const saveFavorito = async () => {
     if (!favName.trim()) return;
     const addr = savingFavIndex === null ? cargueAddress : descargueAddresses[savingFavIndex];
+    
+    // Validar duplicados: nombre y dirección
+    const nombreExiste = favoritos.some(f => f.nombre_favorito.toLowerCase().trim() === favName.toLowerCase().trim());
+    const direccionExiste = favoritos.some(f => f.direccion.direccionConstruida === addr.direccionConstruida);
+    
+    if (nombreExiste) {
+      alert('Ya existe un favorito con ese nombre. Por favor, elige un nombre diferente.');
+      return;
+    }
+    
+    if (direccionExiste) {
+      alert('Esta dirección ya está guardada como favorita.');
+      return;
+    }
+    
     try {
       const res = await fetch(`${API}/direcciones-favoritas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nombre_favorito: favName.trim(), direccion: addr })
+        body: JSON.stringify({ nombre_favorito: favName.trim(), direccion: addr }),
+        credentials: 'include'
       });
       if (res.ok) {
         await fetchFavoritos();
@@ -456,10 +472,8 @@ const CreacionOfertas = () => {
   /* ---- Validation ---- */
   const validateAddress = (address) => {
     const missing = [];
-    if (!address.tipoVia) missing.push('Tipo de v\u00eda');
-    if (!address.numeroPrincipal) missing.push('N\u00famero principal');
-    if (!address.numeroSecundario) missing.push('N\u00famero secundario');
-    if (!address.letraBis1) missing.push('Letra / Bis / Complemento');
+    if (!address.tipoVia) missing.push('Tipo de vía');
+    if (!address.numeroPrincipal) missing.push('Número principal');
     if (!address.departamento) missing.push('Departamento');
     if (!address.municipio) missing.push('Municipio');
     return missing;
@@ -532,6 +546,15 @@ const CreacionOfertas = () => {
           allErrors.push(...errors.map(e => `Destino ${idx + 1}: ${e}`));
         }
       });
+      
+      // Validar que dirección de cargue y descargue no sean iguales
+      descargueAddresses.forEach((addr, idx) => {
+        if (addr.direccionConstruida && cargueAddress.direccionConstruida && 
+            addr.direccionConstruida === cargueAddress.direccionConstruida) {
+          allErrors.push(`Destino ${idx + 1}: La dirección de descargue no puede ser igual a la de cargue`);
+        }
+      });
+      
       if (allErrors.length > 0) {
         setValidationErrors(allErrors);
         return;
@@ -681,25 +704,25 @@ const CreacionOfertas = () => {
       <div className="form-row cols-3">
         <div className="form-group">
           <label>Valor Total a Pagar *</label>
-          <input type="number" className="form-input currency-input" placeholder="$ 0" value={flete.valorTotal} onChange={(e) => updateFlete(idx, 'valorTotal', e.target.value)} data-testid={`valor-total-input-${idx}`} />
+          <input type="text" className="form-input currency-input" placeholder="$ 0" value={flete.valorTotal} onChange={(e) => updateFlete(idx, 'valorTotal', e.target.value)} data-testid={`valor-total-input-${idx}`} />
         </div>
         <div className="form-group">
           <label>Valor Trayecto 1</label>
-          <input type="number" className="form-input currency-input" placeholder="$ 0" value={flete.valorTrayecto1} onChange={(e) => updateFlete(idx, 'valorTrayecto1', e.target.value)} data-testid={`valor-trayecto1-input-${idx}`} />
+          <input type="text" className="form-input currency-input" placeholder="$ 0" value={flete.valorTrayecto1} onChange={(e) => updateFlete(idx, 'valorTrayecto1', e.target.value)} data-testid={`valor-trayecto1-input-${idx}`} />
         </div>
         <div className="form-group">
           <label>Valor Trayecto 2</label>
-          <input type="number" className="form-input currency-input" placeholder="$ 0" value={flete.valorTrayecto2} onChange={(e) => updateFlete(idx, 'valorTrayecto2', e.target.value)} data-testid={`valor-trayecto2-input-${idx}`} />
+          <input type="text" className="form-input currency-input" placeholder="$ 0" value={flete.valorTrayecto2} onChange={(e) => updateFlete(idx, 'valorTrayecto2', e.target.value)} data-testid={`valor-trayecto2-input-${idx}`} />
         </div>
       </div>
       <div className="form-row cols-3">
         <div className="form-group">
           <label>Retención en la Fuente *</label>
-          <input type="number" className="form-input currency-input" placeholder="$ 0" value={flete.retencionFuente} onChange={(e) => updateFlete(idx, 'retencionFuente', e.target.value)} data-testid={`retencion-fuente-input-${idx}`} />
+          <input type="text" className="form-input currency-input" placeholder="$ 0" value={flete.retencionFuente} onChange={(e) => updateFlete(idx, 'retencionFuente', e.target.value)} data-testid={`retencion-fuente-input-${idx}`} />
         </div>
         <div className="form-group">
           <label>Retención ICA *</label>
-          <input type="number" className="form-input currency-input" placeholder="$ 0" value={flete.retencionICA} onChange={(e) => updateFlete(idx, 'retencionICA', e.target.value)} data-testid={`retencion-ica-input-${idx}`} />
+          <input type="text" className="form-input currency-input" placeholder="$ 0" value={flete.retencionICA} onChange={(e) => updateFlete(idx, 'retencionICA', e.target.value)} data-testid={`retencion-ica-input-${idx}`} />
         </div>
         <div className="form-group">
           <label>Valor Neto a Pagar</label>
@@ -709,7 +732,7 @@ const CreacionOfertas = () => {
       <div className="form-row cols-2">
         <div className="form-group">
           <label>Valor Anticipo *</label>
-          <input type="number" className="form-input currency-input" placeholder="$ 0" value={flete.valorAnticipo} onChange={(e) => updateFlete(idx, 'valorAnticipo', e.target.value)} data-testid={`valor-anticipo-input-${idx}`} />
+          <input type="text" className="form-input currency-input" placeholder="$ 0" value={flete.valorAnticipo} onChange={(e) => updateFlete(idx, 'valorAnticipo', e.target.value)} data-testid={`valor-anticipo-input-${idx}`} />
         </div>
         <div className="form-group">
           <label>Saldo a Pagar</label>
