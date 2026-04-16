@@ -16,6 +16,8 @@ import logging
 from typing import Optional
 import uuid
 from datetime import datetime, timezone, timedelta
+import random
+import asyncio
 
 # ==================== CONFIG ====================
 
@@ -144,6 +146,340 @@ def get_client_ip(request: Request) -> str:
     
     return "unknown"
 
+
+# ==================== ASIGNACIÓN DE VEHÍCULOS ====================
+
+def vehiculo_cumple_requisitos(vehiculo: dict, oferta_vehiculo: dict) -> bool:
+    """
+    Verifica si un vehículo cumple con los requisitos de la oferta.
+    """
+    if not vehiculo or not oferta_vehiculo:
+        return False
+    
+    # Verificar configuración
+    if oferta_vehiculo.get("configuracion") and vehiculo.get("configuracion") != oferta_vehiculo.get("configuracion"):
+        return False
+    
+    # Verificar tipo de vehículo
+    if oferta_vehiculo.get("tipo_vehiculo") and vehiculo.get("tipo_vehiculo") != oferta_vehiculo.get("tipo_vehiculo"):
+        return False
+    
+    # Verificar carrocería
+    if oferta_vehiculo.get("carroceria") and vehiculo.get("carroceria") != oferta_vehiculo.get("carroceria"):
+        return False
+    
+    # Verificar tipo de carga
+    if oferta_vehiculo.get("tipo_carga") and vehiculo.get("tipo_carga") != oferta_vehiculo.get("tipo_carga"):
+        return False
+    
+    return True
+
+def simular_proximidad() -> tuple[bool, float]:
+    """
+    Simula si un vehículo está dentro del radio de 20km.
+    Retorna (está_cerca, distancia_km)
+    """
+    distancia = random.uniform(0, 50)  # Simular distancia entre 0 y 50km
+    return distancia < 20, round(distancia, 2)
+
+def simular_respuesta_vehiculo() -> tuple[bool, str]:
+    """
+    Simula la respuesta de un vehículo (acepta o rechaza).
+    Retorna (aceptado, motivo_rechazo)
+    """
+    # 70% de probabilidad de aceptación
+    if random.random() < 0.7:
+        return True, None
+    else:
+        motivos = [
+            "Vehículo no disponible",
+            "Conductor en descanso obligatorio",
+            "Mantenimiento programado",
+            "Ya asignado a otra oferta",
+            "Sin respuesta (timeout)"
+        ]
+        return False, random.choice(motivos)
+
+async def procesar_asignacion_vehiculo(vehiculo: dict, oferta: dict, etapa: str, ciclo: int) -> dict:
+    """
+    Procesa la asignación de un vehículo a una oferta.
+    Simula envío, espera y respuesta.
+    """
+    # Simular proximidad
+    esta_cerca, distancia = simular_proximidad()
+    
+    if not esta_cerca:
+        return {
+            "vehiculo_id": vehiculo["id"],
+            "placa": vehiculo["placa"],
+            "tipo_propiedad": vehiculo.get("tipo_propiedad", "desconocido"),
+            "estado": "RECHAZADO",
+            "motivo": f"Fuera del radio (a {distancia}km)",
+            "etapa": etapa,
+            "ciclo": ciclo,
+            "timestamp": datetime.now(timezone.utc)
+        }
+    
+    # Simular tiempo de espera (en producción serían 5 minutos reales)
+    # En simulación es instantáneo
+    await asyncio.sleep(0.1)  # Pequeña pausa para simular procesamiento
+    
+    # Simular respuesta del vehículo
+    aceptado, motivo = simular_respuesta_vehiculo()
+    
+    if aceptado:
+        return {
+            "vehiculo_id": vehiculo["id"],
+            "placa": vehiculo["placa"],
+            "marca": vehiculo.get("marca", ""),
+            "linea": vehiculo.get("linea", ""),
+            "tipo_propiedad": vehiculo.get("tipo_propiedad", "desconocido"),
+            "estado": "ASIGNADO",
+            "distancia_km": distancia,
+            "etapa": etapa,
+            "ciclo": ciclo,
+            "timestamp": datetime.now(timezone.utc)
+        }
+    else:
+        return {
+            "vehiculo_id": vehiculo["id"],
+            "placa": vehiculo["placa"],
+            "tipo_propiedad": vehiculo.get("tipo_propiedad", "desconocido"),
+            "estado": "RECHAZADO",
+            "motivo": motivo,
+            "etapa": etapa,
+            "ciclo": ciclo,
+            "timestamp": datetime.now(timezone.utc)
+        }
+
+async def ejecutar_asignacion_por_etapa(oferta: dict, etapa: str, tipo_propiedad: str, vehiculos_necesarios: int, ciclo: int) -> list:
+    """
+    Ejecuta la asignación de vehículos para una etapa específica.
+    """
+    logger.info(f"Ejecutando etapa {etapa} (ciclo {ciclo}) para oferta {oferta.get('codigo_oferta')}")
+    
+    # Obtener vehículos del tenant que cumplan el tipo de propiedad
+    vehiculos = await db.vehiculos.find({
+        "tenant_id": oferta["tenant_id"],
+        "tipo_propiedad": tipo_propiedad
+    }).to_list(length=100)
+    
+    # Filtrar vehículos que cumplan requisitos
+    vehiculos_validos = [v for v in vehiculos if vehiculo_cumple_requisitos(v, oferta.get("vehiculo", {}))]
+    
+    logger.info(f"Vehículos válidos en etapa {etapa}: {len(vehiculos_validos)}")
+    
+    # Si no hay vehículos válidos, retornar lista vacía
+    if not vehiculos_validos:
+        return []
+    
+    # Limitar la cantidad de vehículos a procesar
+    vehiculos_a_procesar = vehiculos_validos[:vehiculos_necesarios]
+    
+    # Procesar cada vehículo
+    resultados = []
+    for vehiculo in vehiculos_a_procesar:
+        resultado = await procesar_asignacion_vehiculo(vehiculo, oferta, etapa, ciclo)
+        resultados.append(resultado)
+        
+        # Si ya tenemos suficientes asignados, detener
+        asignados = [r for r in resultados if r["estado"] == "ASIGNADO"]
+        if len(asignados) >= vehiculos_necesarios:
+            break
+    
+    return resultados
+
+def determinar_completitud_objetivo() -> float:
+    """
+    Determina aleatoriamente el porcentaje objetivo de completitud.
+    40%, 80% o 100%
+    """
+    opciones = [0.4, 0.8, 1.0]
+    pesos = [0.2, 0.3, 0.5]  # 20% prob de 40%, 30% de 80%, 50% de 100%
+    return random.choices(opciones, weights=pesos)[0]
+
+async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
+    """
+    Proceso completo de asignación de vehículos a una oferta.
+    Ejecuta las 3 etapas: Flota propia → Terceros vinculados → Terceros
+    """
+    try:
+        # Obtener la oferta
+        oferta = await db.ofertas.find_one({"id": oferta_id, "tenant_id": tenant_id})
+        if not oferta:
+            logger.error(f"Oferta {oferta_id} no encontrada")
+            return
+        
+        # Determinar objetivo de completitud (simulación variable)
+        completitud_objetivo = determinar_completitud_objetivo()
+        logger.info(f"Objetivo de completitud: {completitud_objetivo * 100}% para oferta {oferta.get('codigo_oferta')}")
+        
+        # Determinar cantidad de vehículos necesarios
+        # Por ahora usar 1, luego se puede extender
+        vehiculos_necesarios = 1
+        vehiculos_objetivo = max(1, int(vehiculos_necesarios * completitud_objetivo))
+        
+        # Crear registro de asignación
+        asignacion = {
+            "id": str(uuid.uuid4()),
+            "oferta_id": oferta_id,
+            "oferta_codigo": oferta.get("codigo_oferta", ""),
+            "tenant_id": tenant_id,
+            "estado_asignacion": "EN_PROCESO",
+            "vehiculos_requeridos": vehiculos_necesarios,
+            "vehiculos_objetivo": vehiculos_objetivo,
+            "vehiculos_asignados": [],
+            "vehiculos_rechazados": [],
+            "etapa_actual": "FLOTA_PROPIA",
+            "ciclo_actual": 1,
+            "alertas": [],
+            "fecha_cargue": oferta.get("info_cargue", {}).get("fechaInicio"),
+            "fecha_inicio_asignacion": datetime.now(timezone.utc),
+            "fecha_ultima_actualizacion": datetime.now(timezone.utc),
+            "porcentaje_completado": 0
+        }
+        
+        await db.asignaciones_vehiculos.insert_one(asignacion)
+        
+        # Ejecutar ciclos de asignación
+        max_ciclos = 3
+        asignados = []
+        rechazados = []
+        
+        for ciclo in range(1, max_ciclos + 1):
+            logger.info(f"Iniciando ciclo {ciclo} para oferta {oferta.get('codigo_oferta')}")
+            
+            # Si ya alcanzamos el objetivo, detener
+            if len(asignados) >= vehiculos_objetivo:
+                logger.info(f"Objetivo alcanzado: {len(asignados)}/{vehiculos_objetivo}")
+                break
+            
+            vehiculos_restantes = vehiculos_objetivo - len(asignados)
+            
+            # ETAPA 1: Flota propia
+            resultados_propia = await ejecutar_asignacion_por_etapa(
+                oferta, "FLOTA_PROPIA", "flota_propia", vehiculos_restantes, ciclo
+            )
+            for res in resultados_propia:
+                if res["estado"] == "ASIGNADO":
+                    asignados.append(res)
+                else:
+                    rechazados.append(res)
+            
+            if len(asignados) >= vehiculos_objetivo:
+                break
+            
+            vehiculos_restantes = vehiculos_objetivo - len(asignados)
+            
+            # ETAPA 2: Terceros vinculados
+            resultados_vinculados = await ejecutar_asignacion_por_etapa(
+                oferta, "TERCEROS_VINCULADOS", "tercero_vinculado", vehiculos_restantes, ciclo
+            )
+            for res in resultados_vinculados:
+                if res["estado"] == "ASIGNADO":
+                    asignados.append(res)
+                else:
+                    rechazados.append(res)
+            
+            if len(asignados) >= vehiculos_objetivo:
+                break
+            
+            vehiculos_restantes = vehiculos_objetivo - len(asignados)
+            
+            # ETAPA 3: Terceros (simulados - sin registros reales)
+            # Solo se ejecuta si no se completó con flota propia y vinculados
+            if vehiculos_restantes > 0:
+                logger.info(f"Simulando terceros externos para {vehiculos_restantes} vehículos")
+                # Simular algunos vehículos de terceros
+                for i in range(vehiculos_restantes):
+                    if random.random() < 0.5:  # 50% de éxito con terceros
+                        asignados.append({
+                            "vehiculo_id": f"TERCERO_{uuid.uuid4()}",
+                            "placa": f"EXT{random.randint(100, 999)}",
+                            "marca": "TERCERO",
+                            "linea": "Externo",
+                            "tipo_propiedad": "tercero_externo",
+                            "estado": "ASIGNADO",
+                            "distancia_km": round(random.uniform(5, 18), 2),
+                            "etapa": "TERCEROS",
+                            "ciclo": ciclo,
+                            "timestamp": datetime.now(timezone.utc)
+                        })
+        
+        # Calcular porcentaje completado
+        porcentaje = (len(asignados) / vehiculos_necesarios) * 100 if vehiculos_necesarios > 0 else 0
+        
+        # Determinar estado final
+        if len(asignados) >= vehiculos_necesarios:
+            estado_final = "COMPLETADA"
+        elif len(asignados) >= vehiculos_necesarios * 0.5:
+            estado_final = "PARCIAL"
+        else:
+            estado_final = "INSUFICIENTE"
+        
+        # Verificar alerta (5 horas antes del cargue, menos del 50% asignado)
+        alertas = []
+        if oferta.get("info_cargue", {}).get("fechaInicio"):
+            try:
+                fecha_cargue = datetime.fromisoformat(oferta["info_cargue"]["fechaInicio"].replace('Z', '+00:00'))
+                tiempo_restante = fecha_cargue - datetime.now(timezone.utc)
+                horas_restantes = tiempo_restante.total_seconds() / 3600
+                
+                if horas_restantes <= 5 and porcentaje < 50:
+                    alertas.append({
+                        "tipo": "ASIGNACION_INSUFICIENTE",
+                        "mensaje": f"Alerta: Solo se ha asignado el {porcentaje:.1f}% de los vehículos y faltan {horas_restantes:.1f} horas para el cargue",
+                        "timestamp": datetime.now(timezone.utc),
+                        "criticidad": "ALTA"
+                    })
+            except Exception as e:
+                logger.error(f"Error al calcular alerta: {str(e)}")
+        
+        # Actualizar asignación
+        await db.asignaciones_vehiculos.update_one(
+            {"id": asignacion["id"]},
+            {"$set": {
+                "estado_asignacion": estado_final,
+                "vehiculos_asignados": asignados,
+                "vehiculos_rechazados": rechazados,
+                "porcentaje_completado": porcentaje,
+                "alertas": alertas,
+                "fecha_ultima_actualizacion": datetime.now(timezone.utc),
+                "ciclos_ejecutados": ciclo
+            }}
+        )
+        
+        # Actualizar estado de la oferta
+        if len(asignados) > 0:
+            await db.ofertas.update_one(
+                {"id": oferta_id},
+                {"$set": {
+                    "estado": "ASIGNADO" if estado_final == "COMPLETADA" else "EN PROCESO DE ASIGNACIÓN",
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+        
+        logger.info(f"Asignación completada: {len(asignados)}/{vehiculos_necesarios} vehículos asignados ({porcentaje:.1f}%)")
+        logger.info(f"Flota propia: {len([a for a in asignados if a['tipo_propiedad'] == 'flota_propia'])}")
+        logger.info(f"Terceros vinculados: {len([a for a in asignados if a['tipo_propiedad'] == 'tercero_vinculado'])}")
+        logger.info(f"Terceros externos: {len([a for a in asignados if a['tipo_propiedad'] == 'tercero_externo'])}")
+        
+    except Exception as e:
+        logger.error(f"Error en proceso de asignación: {str(e)}")
+        # Actualizar estado de error
+        try:
+            await db.asignaciones_vehiculos.update_one(
+                {"oferta_id": oferta_id},
+                {"$set": {
+                    "estado_asignacion": "ERROR",
+                    "error_mensaje": str(e),
+                    "fecha_ultima_actualizacion": datetime.now(timezone.utc)
+                }}
+            )
+        except Exception:
+            pass
+
+
 # ==================== INDEXES ====================
 
 async def create_indexes():
@@ -170,6 +506,12 @@ async def create_indexes():
     await db.activity_logs.create_index([("accion", 1)])
     await db.activity_logs.create_index([("empresa_id", 1)])
     await db.activity_logs.create_index([("tenant_id", 1)])
+    
+    # Índices para Asignaciones de Vehículos
+    await db.asignaciones_vehiculos.create_index([("oferta_id", 1)])
+    await db.asignaciones_vehiculos.create_index([("tenant_id", 1)])
+    await db.asignaciones_vehiculos.create_index([("estado_asignacion", 1)])
+    await db.asignaciones_vehiculos.create_index([("fecha_inicio_asignacion", -1)])
     
     logger.info("MongoDB indexes created")
 
@@ -772,6 +1114,73 @@ async def get_upload(filename: str):
 
 
 # ==================== ACTIVITY LOGS ====================
+
+
+
+# ==================== PUBLICACIÓN Y ASIGNACIÓN DE OFERTAS ====================
+
+@api_router.post("/ofertas/{oferta_id}/publicar")
+async def publicar_oferta(request: Request, oferta_id: str):
+    """
+    Publica una oferta y activa el proceso de asignación de vehículos.
+    """
+    user = await get_current_user(request)
+    check_role(user, ROLE_WRITE)
+    
+    # Verificar que la oferta existe
+    oferta = await db.ofertas.find_one({"id": oferta_id, "tenant_id": user["tenant_id"]})
+    if not oferta:
+        raise HTTPException(status_code=404, detail="Oferta no encontrada")
+    
+    # Cambiar estado a "EN PROCESO DE ASIGNACIÓN"
+    await db.ofertas.update_one(
+        {"id": oferta_id},
+        {"$set": {
+            "estado": "EN PROCESO DE ASIGNACIÓN",
+            "fecha_publicacion": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    # Registrar actividad
+    await registrar_actividad(
+        usuario=user,
+        accion="CAMBIO_ESTADO",
+        modulo="ofertas",
+        registro_id=oferta_id,
+        detalles=f"Publicación de oferta {oferta.get('codigo_oferta', 'N/A')} - Iniciando proceso de asignación",
+        ip_address=get_client_ip(request),
+        datos_nuevos={"estado": "EN PROCESO DE ASIGNACIÓN", "accion": "publicar"}
+    )
+    
+    # Iniciar proceso de asignación en background
+    asyncio.create_task(proceso_asignacion_vehiculos(oferta_id, user["tenant_id"]))
+    
+    logger.info(f"Oferta {oferta.get('codigo_oferta')} publicada. Iniciando asignación de vehículos.")
+    
+    return {
+        "message": "Oferta publicada exitosamente. La asignación de vehículos ha iniciado.",
+        "oferta_id": oferta_id,
+        "estado": "EN PROCESO DE ASIGNACIÓN"
+    }
+
+@api_router.get("/ofertas/{oferta_id}/asignacion")
+async def get_estado_asignacion(request: Request, oferta_id: str):
+    """
+    Obtiene el estado actual de la asignación de vehículos de una oferta.
+    """
+    user = await get_current_user(request)
+    check_role(user, ROLE_ALL)
+    
+    asignacion = await db.asignaciones_vehiculos.find_one(
+        {"oferta_id": oferta_id, "tenant_id": user["tenant_id"]},
+        {"_id": 0}
+    )
+    
+    if not asignacion:
+        raise HTTPException(status_code=404, detail="No se encontró proceso de asignación para esta oferta")
+    
+    return asignacion
 
 @api_router.get("/activity-logs")
 async def get_activity_logs(

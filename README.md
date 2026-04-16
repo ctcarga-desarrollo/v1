@@ -267,6 +267,188 @@ Para consultas eficientes, se crearon índices en:
 
 ---
 
+
+---
+
+## Sistema de Asignación Automática de Vehículos
+
+### Descripción
+Sistema inteligente que asigna automáticamente vehículos a ofertas publicadas, siguiendo un orden de prioridad y reglas de negocio específicas.
+
+### Flujo de Asignación
+
+#### 1. Publicación de Oferta
+Al hacer clic en "Publicar" en una oferta:
+- El estado cambia a **"EN PROCESO DE ASIGNACIÓN"**
+- Se inicia el proceso de asignación en segundo plano
+- Se crea un registro en `asignaciones_vehiculos`
+
+#### 2. Proceso por Etapas
+El sistema ejecuta 3 etapas en orden de prioridad:
+
+##### **ETAPA 1: Flota Propia**
+- Busca vehículos con `tipo_propiedad = "flota_propia"`
+- Filtra por requisitos de la oferta (configuración, tipo, carrocería, tipo de carga)
+- Verifica proximidad al sitio de cargue (< 20km)
+- Simula envío y espera de respuesta (5 minutos en producción)
+- Asigna los que aceptan
+
+##### **ETAPA 2: Flota de Terceros Vinculados**
+- Si no se completó con flota propia
+- Busca vehículos con `tipo_propiedad = "tercero_vinculado"`
+- Aplica las mismas validaciones y proceso
+
+##### **ETAPA 3: Terceros Externos**
+- Si aún faltan vehículos
+- Simula publicación a plataforma de terceros
+- Asigna vehículos externos disponibles
+
+#### 3. Ciclos de Reintento
+- Si no se completa la asignación, el sistema ejecuta hasta 3 ciclos
+- Cada ciclo repite las 3 etapas
+- Se detiene al alcanzar el objetivo o completar 3 ciclos
+
+### Reglas de Negocio
+
+#### Validación de Requisitos
+Un vehículo debe cumplir:
+- ✅ Configuración coincide con la requerida
+- ✅ Tipo de vehículo coincide
+- ✅ Carrocería coincide
+- ✅ Tipo de carga coincide
+- ✅ Ubicado a menos de 20km del sitio de cargue
+
+#### Simulación de Respuesta
+Cada vehículo:
+- Tiene 70% de probabilidad de aceptar
+- Puede rechazar por:
+  - Vehículo no disponible
+  - Conductor en descanso
+  - Mantenimiento programado
+  - Ya asignado a otra oferta
+  - Sin respuesta (timeout)
+
+### Simulación Dinámica
+
+El sistema varía el porcentaje de completitud:
+- **100% completado:** 50% de probabilidad
+- **80% completado:** 30% de probabilidad
+- **40% completado:** 20% de probabilidad
+
+Esto genera resultados realistas y permite probar diferentes escenarios.
+
+### Estados de Asignación
+
+| Estado | Descripción |
+|---|---|
+| EN_PROCESO | Asignación en progreso |
+| COMPLETADA | 100% de vehículos asignados |
+| PARCIAL | 50% o más asignados |
+| INSUFICIENTE | Menos del 50% asignados |
+| ERROR | Error en el proceso |
+
+### Sistema de Alertas
+
+#### Alerta de Asignación Insuficiente
+Se genera cuando:
+- Faltan **5 horas o menos** para el cargue
+- Se ha asignado **menos del 50%** de vehículos requeridos
+- **Criticidad:** ALTA
+
+```json
+{
+  "tipo": "ASIGNACION_INSUFICIENTE",
+  "mensaje": "Solo se ha asignado el 45% de los vehículos y faltan 4.5 horas para el cargue",
+  "timestamp": "2025-07-15T10:00:00Z",
+  "criticidad": "ALTA"
+}
+```
+
+### Modelo de Datos: asignaciones_vehiculos
+
+```json
+{
+  "id": "uuid",
+  "oferta_id": "uuid",
+  "oferta_codigo": "2026-04-00001-0001",
+  "tenant_id": "uuid",
+  "estado_asignacion": "COMPLETADA",
+  "vehiculos_requeridos": 1,
+  "vehiculos_objetivo": 1,
+  "vehiculos_asignados": [
+    {
+      "vehiculo_id": "uuid",
+      "placa": "ABC123",
+      "marca": "KENWORTH",
+      "linea": "T800",
+      "tipo_propiedad": "flota_propia",
+      "estado": "ASIGNADO",
+      "distancia_km": 12.5,
+      "etapa": "FLOTA_PROPIA",
+      "ciclo": 1,
+      "timestamp": "2025-07-15T10:00:00Z"
+    }
+  ],
+  "vehiculos_rechazados": [
+    {
+      "vehiculo_id": "uuid",
+      "placa": "XYZ789",
+      "tipo_propiedad": "tercero_vinculado",
+      "estado": "RECHAZADO",
+      "motivo": "Vehículo no disponible",
+      "etapa": "TERCEROS_VINCULADOS",
+      "ciclo": 1,
+      "timestamp": "2025-07-15T10:05:00Z"
+    }
+  ],
+  "etapa_actual": "FLOTA_PROPIA",
+  "ciclo_actual": 1,
+  "ciclos_ejecutados": 1,
+  "alertas": [],
+  "fecha_cargue": "2025-07-16T08:00:00",
+  "fecha_inicio_asignacion": "2025-07-15T10:00:00Z",
+  "fecha_ultima_actualizacion": "2025-07-15T10:10:00Z",
+  "porcentaje_completado": 100
+}
+```
+
+### Consulta de Estado de Asignación
+
+Endpoint: `GET /api/ofertas/{id}/asignacion`
+
+**Respuesta:**
+```json
+{
+  "oferta_id": "uuid",
+  "estado_asignacion": "COMPLETADA",
+  "vehiculos_asignados": [ /* detalles */ ],
+  "vehiculos_rechazados": [ /* detalles */ ],
+  "porcentaje_completado": 100,
+  "alertas": []
+}
+```
+
+### Métricas de Asignación
+
+El sistema registra:
+- ✅ Cantidad de vehículos por tipo de propiedad
+- ✅ Tasa de aceptación/rechazo
+- ✅ Tiempo promedio de asignación
+- ✅ Etapa en que se completó
+- ✅ Ciclos necesarios
+- ✅ Motivos de rechazo
+
+### Próximas Funcionalidades
+
+1. **Vista en tiempo real**: Dashboard para monitorear asignaciones activas
+2. **Notificaciones push**: Alertas a conductores y administradores
+3. **Geolocalización real**: Integración con GPS de vehículos
+4. **App móvil**: Aceptación/rechazo desde dispositivos móviles
+5. **Machine learning**: Predicción de tasa de aceptación
+6. **Reasignación automática**: Si un vehículo cancela después de aceptar
+
+
+
 ## API REST
 
 Base URL: `/api`
@@ -285,6 +467,8 @@ Base URL: `/api`
 | GET | `/api/ofertas` | Todos | Listar ofertas del tenant | No |
 | GET | `/api/ofertas/{id}` | Todos | Detalle de oferta | No |
 | POST | `/api/ofertas` | ADMIN, OPERADOR | Crear oferta | ✅ CREAR |
+| POST | `/api/ofertas/{id}/publicar` | ADMIN, OPERADOR | Publicar oferta e iniciar asignación | ✅ CAMBIO_ESTADO |
+| GET | `/api/ofertas/{id}/asignacion` | Todos | Obtener estado de asignación de vehículos | No |
 | DELETE | `/api/ofertas/{id}` | ADMIN, OPERADOR | Eliminar oferta | ✅ ELIMINAR |
 
 ### Estadísticas
@@ -417,6 +601,38 @@ Base URL: `/api`
 }
 ```
 
+### `asignaciones_vehiculos`
+```json
+{
+  "id": "uuid", "oferta_id": "uuid", "oferta_codigo": "2026-04-00001-0001",
+  "tenant_id": "uuid",
+  "estado_asignacion": "EN_PROCESO | COMPLETADA | PARCIAL | INSUFICIENTE | ERROR",
+  "vehiculos_requeridos": 1, "vehiculos_objetivo": 1,
+  "vehiculos_asignados": [
+    {
+      "vehiculo_id": "uuid", "placa": "ABC123",
+      "marca": "KENWORTH", "linea": "T800",
+      "tipo_propiedad": "flota_propia | tercero_vinculado | tercero_externo",
+      "estado": "ASIGNADO", "distancia_km": 12.5,
+      "etapa": "FLOTA_PROPIA | TERCEROS_VINCULADOS | TERCEROS",
+      "ciclo": 1, "timestamp": "ISO 8601"
+    }
+  ],
+  "vehiculos_rechazados": [
+    {
+      "vehiculo_id": "uuid", "placa": "XYZ789",
+      "tipo_propiedad": "tercero_vinculado",
+      "estado": "RECHAZADO", "motivo": "Vehículo no disponible",
+      "etapa": "TERCEROS_VINCULADOS", "ciclo": 1, "timestamp": "ISO 8601"
+    }
+  ],
+  "etapa_actual": "string", "ciclo_actual": 1, "ciclos_ejecutados": 1,
+  "alertas": [], "fecha_cargue": "ISO 8601",
+  "fecha_inicio_asignacion": "ISO 8601", "fecha_ultima_actualizacion": "ISO 8601",
+  "porcentaje_completado": 100.0
+}
+```
+
 ---
 
 ## Reglas de Negocio
@@ -432,6 +648,10 @@ Base URL: `/api`
 9. **Direcciones cargue/descargue**: No pueden ser iguales (validado en paso 2).
 10. **Tipo de propiedad**: Obligatorio para vehículos, define flujo de facturación y pagos.
 11. **Auditoría**: Todas las acciones CRUD registradas automáticamente con detalles completos.
+12. **Asignación de vehículos**: Orden de prioridad: Flota propia → Terceros vinculados → Terceros.
+13. **Radio de asignación**: Solo vehículos a menos de 20km del sitio de cargue.
+14. **Tiempo de respuesta**: Vehículos tienen 5 minutos para aceptar/rechazar (simulado).
+15. **Alerta de asignación**: Si faltando 5 horas no se asignó 50%, se genera alerta crítica.
 
 ---
 
@@ -579,6 +799,21 @@ Variables de entorno:
 - ✅ 6 índices de MongoDB para consultas eficientes
 - ✅ Paginación y ordenamiento por fecha
 
+#### **Sistema de Asignación Automática de Vehículos:**
+- ✅ Lógica completa de asignación por etapas (Flota propia → Vinculados → Terceros)
+- ✅ Validación de requisitos de vehículo (configuración, tipo, carrocería, carga)
+- ✅ Simulación de proximidad (< 20km)
+- ✅ Simulación de respuesta de vehículos (aceptación/rechazo)
+- ✅ Sistema de reintentos (hasta 3 ciclos)
+- ✅ Simulación dinámica (40%, 80%, 100% completitud)
+- ✅ Sistema de alertas (5 horas antes, < 50% asignado)
+- ✅ Colección `asignaciones_vehiculos` con tracking completo
+- ✅ Endpoint POST `/api/ofertas/{id}/publicar`
+- ✅ Endpoint GET `/api/ofertas/{id}/asignacion`
+- ✅ Cambio de estado automático a "EN PROCESO DE ASIGNACIÓN"
+- ✅ Logging de publicación de ofertas
+- ✅ Proceso asíncrono en segundo plano
+
 ---
 
 ## Soporte y Contacto
@@ -591,5 +826,5 @@ Para reportar problemas, solicitar funcionalidades o contribuir al proyecto:
 ---
 
 **Última actualización:** 2025-07-15  
-**Versión:** 1.2.0  
+**Versión:** 1.3.0  
 **Estado:** ✅ Producción

@@ -99,10 +99,29 @@ const Ofertas = () => {
   };
 
   const handlePublicar = async () => {
-    // Aquí irá la lógica de publicación
-    console.log('Publicando oferta:', selectedOferta.codigo_oferta);
-    setShowModalPublicar(false);
-    alert('Oferta publicada exitosamente. La asignación comenzará 24 horas antes de la fecha programada.');
+    try {
+      const res = await fetch(`${API}/ofertas/${selectedOferta.id}/publicar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setShowModalPublicar(false);
+        alert('Oferta publicada exitosamente. La asignación de vehículos ha iniciado.');
+        // Actualizar lista de ofertas
+        fetchOfertas();
+        // Limpiar oferta seleccionada para que se recargue con nuevo estado
+        setSelectedOferta(null);
+      } else {
+        const error = await res.json();
+        alert(`Error al publicar oferta: ${error.detail || 'Error desconocido'}`);
+      }
+    } catch (error) {
+      console.error('Error publicando oferta:', error);
+      alert('Error al publicar oferta. Por favor intente nuevamente.');
+    }
   };
 
   const handleCerrarPublicar = () => {
