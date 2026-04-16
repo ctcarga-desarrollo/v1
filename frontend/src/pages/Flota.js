@@ -14,8 +14,8 @@ const TIPOS_REMOLQUE = ["Furgón","Plana","Cisterna","Cama baja","Estacas","Volc
 
 const emptyVehicle = () => ({
   placa: '', licencia_transito_no: '', marca: '', linea: '', modelo: '',
-  clase_vehiculo: '', configuracion: '', tipo_vehiculo: '', carroceria: '', tipo_carga: '',
-  tipo_carroceria: '', combustible: '', numero_motor: '', vin: '',
+  configuracion: '', tipo_vehiculo: '', carroceria: '', tipo_carga: '',
+  combustible: '', numero_motor: '', vin: '',
   propietario: '', identificacion_propietario: '', fecha_matricula: '',
   tarjeta_operaciones: { numero: '', fecha_inicio: '', fecha_fin: '' },
   soat: { numero_poliza: '', aseguradora: '', fecha_inicio: '', fecha_fin: '' },
@@ -197,12 +197,10 @@ const Flota = () => {
     if (!f.marca) errs.push('Marca');
     if (!f.linea.trim()) errs.push('Línea');
     if (!f.modelo) errs.push('Modelo');
-    if (!f.clase_vehiculo) errs.push('Clase de vehículo');
     if (!f.configuracion) errs.push('Configuración');
     if (!f.tipo_vehiculo) errs.push('Tipo de vehículo');
     if (!f.carroceria) errs.push('Carrocería');
     if (!f.tipo_carga) errs.push('Tipo de carga');
-    if (!f.tipo_carroceria.trim()) errs.push('Tipo de carrocería');
     if (!f.combustible) errs.push('Combustible');
     if (!f.numero_motor.trim()) errs.push('Número de motor');
     if (!f.vin.trim()) errs.push('VIN');
@@ -453,7 +451,7 @@ const Flota = () => {
                         <th>Marca</th>
                         <th>Línea</th>
                         <th>Modelo</th>
-                        <th>Clase</th>
+                        <th>Configuración</th>
                         <th>Propietario</th>
                         <th>Remolque</th>
                         <th>Acciones</th>
@@ -471,7 +469,7 @@ const Flota = () => {
                             <td>{v.marca}</td>
                             <td>{v.linea}</td>
                             <td>{v.modelo}</td>
-                            <td><span className="clase-badge">{v.clase_vehiculo}</span></td>
+                            <td><span className="clase-badge">{v.configuracion || '-'}</span></td>
                             <td>{v.propietario}</td>
                             <td>
                               {linked ? (
@@ -483,7 +481,7 @@ const Flota = () => {
                             <td>
                               <div className="table-actions">
                                 <button className="btn-action edit" onClick={() => handleEditVehiculo(v)} data-testid={`edit-vehiculo-${v.id}`}><Edit2 size={12} /> Editar</button>
-                                {v.clase_vehiculo === 'Tractocamión' && !linked && (
+                                {v.configuracion === 'Tractocamión' && !linked && (
                                   <button className="btn-action link" onClick={() => { setLinkVehiculoId(v.id); setShowLinkModal(true); }} data-testid={`link-vehiculo-${v.id}`}><Link2 size={12} /> Vincular</button>
                                 )}
                                 {linked && (
@@ -589,13 +587,6 @@ const Flota = () => {
                     <input type="number" className="form-input" placeholder="2024" value={vehicleForm.modelo} onChange={(e) => updateVF('modelo', e.target.value)} data-testid="modelo-input" />
                   </div>
                   <div className="form-group">
-                    <label>Clase de vehículo *</label>
-                    <select className="form-input" value={vehicleForm.clase_vehiculo} onChange={(e) => updateVF('clase_vehiculo', e.target.value)} data-testid="clase-select">
-                      <option value="">Seleccionar...</option>
-                      {CLASES_VEHICULO.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div className="form-group">
                     <label>Configuración *</label>
                     <select className="form-input" value={vehicleForm.configuracion} onChange={(e) => updateVehicleConfig('configuracion', e.target.value)} data-testid="configuracion-select">
                       <option value="">Seleccionar configuración...</option>
@@ -609,8 +600,6 @@ const Flota = () => {
                       {tipoVehiculoOptions.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
-                </div>
-                <div className="form-row cols-4">
                   <div className="form-group">
                     <label>Carrocería *</label>
                     <select className="form-input" value={vehicleForm.carroceria} onChange={(e) => updateVehicleConfig('carroceria', e.target.value)} disabled={!vehicleForm.configuracion} data-testid="carroceria-select">
@@ -618,6 +607,8 @@ const Flota = () => {
                       {carroceriaOptions.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
+                </div>
+                <div className="form-row cols-4">
                   <div className="form-group">
                     <label>Tipo de carga *</label>
                     <select className="form-input" value={vehicleForm.tipo_carga} onChange={(e) => updateVehicleConfig('tipo_carga', e.target.value)} disabled={!vehicleForm.configuracion} data-testid="tipo-carga-select">
@@ -626,18 +617,12 @@ const Flota = () => {
                     </select>
                   </div>
                   <div className="form-group">
-                    <label>Tipo de carrocería *</label>
-                    <input type="text" className="form-input" value={vehicleForm.tipo_carroceria} onChange={(e) => updateVF('tipo_carroceria', e.target.value)} data-testid="carroceria-input" />
-                  </div>
-                  <div className="form-group">
                     <label>Combustible *</label>
                     <select className="form-input" value={vehicleForm.combustible} onChange={(e) => updateVF('combustible', e.target.value)} data-testid="combustible-select">
                       <option value="">Seleccionar...</option>
                       {COMBUSTIBLES.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
-                </div>
-                <div className="form-row cols-4">
                   <div className="form-group">
                     <label>Número de motor *</label>
                     <input type="text" className="form-input" value={vehicleForm.numero_motor} onChange={(e) => updateVF('numero_motor', e.target.value)} data-testid="motor-input" />
@@ -646,6 +631,8 @@ const Flota = () => {
                     <label>VIN *</label>
                     <input type="text" className="form-input" value={vehicleForm.vin} onChange={(e) => updateVF('vin', e.target.value)} data-testid="vin-input" />
                   </div>
+                </div>
+                <div className="form-row cols-4">
                   <div className="form-group">
                     <label>Propietario *</label>
                     <input type="text" className="form-input" value={vehicleForm.propietario} onChange={(e) => updateVF('propietario', e.target.value)} data-testid="propietario-input" />
@@ -654,8 +641,6 @@ const Flota = () => {
                     <label>Identificación del propietario *</label>
                     <input type="text" className="form-input" value={vehicleForm.identificacion_propietario} onChange={(e) => updateVF('identificacion_propietario', e.target.value)} data-testid="id-propietario-input" />
                   </div>
-                </div>
-                <div className="form-row cols-4">
                   <div className="form-group">
                     <label>Fecha de matrícula *</label>
                     <input type="date" className="form-input" value={vehicleForm.fecha_matricula} onChange={(e) => updateVF('fecha_matricula', e.target.value)} data-testid="fecha-matricula-input" />
