@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, FileText, Plus, TrendingUp, Bell, Settings, Menu, User, MapPin, ChevronRight, Star, X, Search, ChevronDown, Truck, AlertCircle, Check } from 'lucide-react';
 import { useAuth } from '@/AuthContext';
@@ -240,7 +240,7 @@ const emptyFlete = () => ({
   lugarPago: '', fechaPago: '', carguePagadoPor: '', descarguePagadoPor: ''
 });
 
-const emptyDestinatario = () => ({ nombre: '', identificacion: '' });
+const emptyDestinatario = () => ({ nombre: '', identificacion: '', telefono: '', email: '' });
 
 /* ---- Main Page ---- */
 const CreacionOfertas = () => {
@@ -354,6 +354,8 @@ const CreacionOfertas = () => {
     remitente: '',
     nombreResponsable: '',
     identificacion: '',
+    telefono: '',
+    email: '',
     cantidadMovilizar: '',
     unidadMedida: '',
     naturalezaCarga: '',
@@ -390,20 +392,21 @@ const CreacionOfertas = () => {
   const computeSaldoPagar = (flete) => computeValorNeto(flete) - (parseFloat(flete.valorAnticipo) || 0);
 
   // Update helpers for per-destination arrays
-  const updateDestinatario = (idx, field, value) => {
+  const updateDestinatario = useCallback((idx, field, value) => {
     setDestinatarioInfo(prev => {
       const arr = [...prev];
       arr[idx] = { ...arr[idx], [field]: value };
       return arr;
     });
-  };
-  const updateFlete = (idx, field, value) => {
+  }, []);
+  
+  const updateFlete = useCallback((idx, field, value) => {
     setFletesPerDestino(prev => {
       const arr = [...prev];
       arr[idx] = { ...arr[idx], [field]: value };
       return arr;
     });
-  };
+  }, []);
 
   const [infoCargue, setInfoCargue] = useState({
     fechaInicio: '',
@@ -593,7 +596,7 @@ const CreacionOfertas = () => {
   const limpiarPaso2 = () => { setDescargueAddresses([emptyAddress()]); setValidationErrors([]); };
   const limpiarPaso3 = () => { setVehicleConfig({ configuracion: '', tipo_vehiculo: '', carroceria: '', tipo_carga: '', ejes: '', peso_bruto_vehicular: '', carga_util: '' }); setValidationErrors([]); };
   const limpiarPaso4 = () => {
-    setCondiciones({ remitente: '', nombreResponsable: '', identificacion: '', cantidadMovilizar: '', unidadMedida: '', naturalezaCarga: '', empaqueProducto: '', serialISO: '' });
+    setCondiciones({ remitente: '', nombreResponsable: '', identificacion: '', telefono: '', email: '', cantidadMovilizar: '', unidadMedida: '', naturalezaCarga: '', empaqueProducto: '', serialISO: '' });
     setDestinatarioInfo(descargueAddresses.map(() => emptyDestinatario()));
     setFletesPerDestino(descargueAddresses.map(() => emptyFlete()));
     setDistribucionDestinos(descargueAddresses.length > 1 ? descargueAddresses.map(() => '') : []);
@@ -697,32 +700,67 @@ const CreacionOfertas = () => {
   ) : null;
 
   /* ---- Flete Section Component ---- */
-  const FleteSection = ({ flete, idx, showTitle }) => (
+  const FleteSection = React.memo(({ flete, idx, showTitle, updateFlete, computeValorNeto, computeSaldoPagar, formatCurrency }) => (
     <div className="subsection flete-destino-section" data-testid={`fletes-section-${idx}`}>
       {showTitle && <h3 className="subsection-title">Fletes - Destino {idx + 1}</h3>}
       {!showTitle && <h3 className="subsection-title">Fletes</h3>}
       <div className="form-row cols-3">
         <div className="form-group">
           <label>Valor Total a Pagar *</label>
-          <input type="text" className="form-input currency-input" placeholder="$ 0" value={flete.valorTotal} onChange={(e) => updateFlete(idx, 'valorTotal', e.target.value)} data-testid={`valor-total-input-${idx}`} />
+          <input 
+            type="text" 
+            className="form-input currency-input" 
+            placeholder="$ 0" 
+            value={flete.valorTotal} 
+            onChange={(e) => updateFlete(idx, 'valorTotal', e.target.value)} 
+            data-testid={`valor-total-input-${idx}`} 
+          />
         </div>
         <div className="form-group">
           <label>Valor Trayecto 1</label>
-          <input type="text" className="form-input currency-input" placeholder="$ 0" value={flete.valorTrayecto1} onChange={(e) => updateFlete(idx, 'valorTrayecto1', e.target.value)} data-testid={`valor-trayecto1-input-${idx}`} />
+          <input 
+            type="text" 
+            className="form-input currency-input" 
+            placeholder="$ 0" 
+            value={flete.valorTrayecto1} 
+            onChange={(e) => updateFlete(idx, 'valorTrayecto1', e.target.value)} 
+            data-testid={`valor-trayecto1-input-${idx}`} 
+          />
         </div>
         <div className="form-group">
           <label>Valor Trayecto 2</label>
-          <input type="text" className="form-input currency-input" placeholder="$ 0" value={flete.valorTrayecto2} onChange={(e) => updateFlete(idx, 'valorTrayecto2', e.target.value)} data-testid={`valor-trayecto2-input-${idx}`} />
+          <input 
+            type="text" 
+            className="form-input currency-input" 
+            placeholder="$ 0" 
+            value={flete.valorTrayecto2} 
+            onChange={(e) => updateFlete(idx, 'valorTrayecto2', e.target.value)} 
+            data-testid={`valor-trayecto2-input-${idx}`} 
+          />
         </div>
       </div>
       <div className="form-row cols-3">
         <div className="form-group">
           <label>Retención en la Fuente *</label>
-          <input type="text" className="form-input currency-input" placeholder="$ 0" value={flete.retencionFuente} onChange={(e) => updateFlete(idx, 'retencionFuente', e.target.value)} data-testid={`retencion-fuente-input-${idx}`} />
+          <input 
+            type="text" 
+            className="form-input currency-input" 
+            placeholder="$ 0" 
+            value={flete.retencionFuente} 
+            onChange={(e) => updateFlete(idx, 'retencionFuente', e.target.value)} 
+            data-testid={`retencion-fuente-input-${idx}`} 
+          />
         </div>
         <div className="form-group">
           <label>Retención ICA *</label>
-          <input type="text" className="form-input currency-input" placeholder="$ 0" value={flete.retencionICA} onChange={(e) => updateFlete(idx, 'retencionICA', e.target.value)} data-testid={`retencion-ica-input-${idx}`} />
+          <input 
+            type="text" 
+            className="form-input currency-input" 
+            placeholder="$ 0" 
+            value={flete.retencionICA} 
+            onChange={(e) => updateFlete(idx, 'retencionICA', e.target.value)} 
+            data-testid={`retencion-ica-input-${idx}`} 
+          />
         </div>
         <div className="form-group">
           <label>Valor Neto a Pagar</label>
@@ -732,7 +770,14 @@ const CreacionOfertas = () => {
       <div className="form-row cols-2">
         <div className="form-group">
           <label>Valor Anticipo *</label>
-          <input type="text" className="form-input currency-input" placeholder="$ 0" value={flete.valorAnticipo} onChange={(e) => updateFlete(idx, 'valorAnticipo', e.target.value)} data-testid={`valor-anticipo-input-${idx}`} />
+          <input 
+            type="text" 
+            className="form-input currency-input" 
+            placeholder="$ 0" 
+            value={flete.valorAnticipo} 
+            onChange={(e) => updateFlete(idx, 'valorAnticipo', e.target.value)} 
+            data-testid={`valor-anticipo-input-${idx}`} 
+          />
         </div>
         <div className="form-group">
           <label>Saldo a Pagar</label>
@@ -742,25 +787,52 @@ const CreacionOfertas = () => {
       <div className="form-row cols-2">
         <div className="form-group">
           <label>Lugar de Pago *</label>
-          <input type="text" className="form-input" placeholder="Ingrese el lugar de pago" value={flete.lugarPago} onChange={(e) => updateFlete(idx, 'lugarPago', e.target.value)} data-testid={`lugar-pago-input-${idx}`} />
+          <input 
+            type="text" 
+            className="form-input" 
+            placeholder="Ingrese el lugar de pago" 
+            value={flete.lugarPago} 
+            onChange={(e) => updateFlete(idx, 'lugarPago', e.target.value)} 
+            data-testid={`lugar-pago-input-${idx}`} 
+          />
         </div>
         <div className="form-group">
           <label>Fecha de Pago *</label>
-          <input type="date" className="form-input" value={flete.fechaPago} onChange={(e) => updateFlete(idx, 'fechaPago', e.target.value)} data-testid={`fecha-pago-input-${idx}`} />
+          <input 
+            type="date" 
+            className="form-input" 
+            value={flete.fechaPago} 
+            onChange={(e) => updateFlete(idx, 'fechaPago', e.target.value)} 
+            data-testid={`fecha-pago-input-${idx}`} 
+          />
         </div>
       </div>
       <div className="form-row cols-2">
         <div className="form-group">
           <label>Cargue Pagado Por *</label>
-          <input type="text" className="form-input" placeholder="Ingrese quién paga el cargue" value={flete.carguePagadoPor} onChange={(e) => updateFlete(idx, 'carguePagadoPor', e.target.value)} data-testid={`cargue-pagado-input-${idx}`} />
+          <input 
+            type="text" 
+            className="form-input" 
+            placeholder="Ingrese quién paga el cargue" 
+            value={flete.carguePagadoPor} 
+            onChange={(e) => updateFlete(idx, 'carguePagadoPor', e.target.value)} 
+            data-testid={`cargue-pagado-input-${idx}`} 
+          />
         </div>
         <div className="form-group">
           <label>Descargue Pagado Por *</label>
-          <input type="text" className="form-input" placeholder="Ingrese quién paga el descargue" value={flete.descarguePagadoPor} onChange={(e) => updateFlete(idx, 'descarguePagadoPor', e.target.value)} data-testid={`descargue-pagado-input-${idx}`} />
+          <input 
+            type="text" 
+            className="form-input" 
+            placeholder="Ingrese quién paga el descargue" 
+            value={flete.descarguePagadoPor} 
+            onChange={(e) => updateFlete(idx, 'descarguePagadoPor', e.target.value)} 
+            data-testid={`descargue-pagado-input-${idx}`} 
+          />
         </div>
       </div>
     </div>
-  );
+  ));
 
   return (
     <div className="dashboard-container">
@@ -994,6 +1066,16 @@ const CreacionOfertas = () => {
                     <input type="text" className="form-input" placeholder="Número de identificación" value={condiciones.identificacion} onChange={(e) => setCondiciones({...condiciones, identificacion: e.target.value})} data-testid="identificacion-input" />
                   </div>
                 </div>
+                <div className="form-row cols-2">
+                  <div className="form-group">
+                    <label>Número de teléfono</label>
+                    <input type="tel" className="form-input" placeholder="Número de teléfono" value={condiciones.telefono} onChange={(e) => setCondiciones({...condiciones, telefono: e.target.value})} data-testid="telefono-remitente-input" />
+                  </div>
+                  <div className="form-group">
+                    <label>Correo electrónico</label>
+                    <input type="email" className="form-input" placeholder="correo@ejemplo.com" value={condiciones.email} onChange={(e) => setCondiciones({...condiciones, email: e.target.value})} data-testid="email-remitente-input" />
+                  </div>
+                </div>
                 <div className="form-row cols-1">
                   <div className="form-group">
                     <label>Dirección del Remitente</label>
@@ -1074,6 +1156,16 @@ const CreacionOfertas = () => {
                         </div>
                       </div>
                     </div>
+                    <div className="form-row cols-2">
+                      <div className="form-group">
+                        <label>Número de teléfono</label>
+                        <input type="tel" className="form-input" placeholder="Número de teléfono" value={destinatarioInfo[idx]?.telefono || ''} onChange={(e) => updateDestinatario(idx, 'telefono', e.target.value)} data-testid={`destinatario-telefono-${idx}`} />
+                      </div>
+                      <div className="form-group">
+                        <label>Correo electrónico</label>
+                        <input type="email" className="form-input" placeholder="correo@ejemplo.com" value={destinatarioInfo[idx]?.email || ''} onChange={(e) => updateDestinatario(idx, 'email', e.target.value)} data-testid={`destinatario-email-${idx}`} />
+                      </div>
+                    </div>
                   </div>
 
                   {/* Distribution (multi-destination only) */}
@@ -1085,7 +1177,15 @@ const CreacionOfertas = () => {
                   )}
 
                   {/* Fletes for this destination */}
-                  <FleteSection flete={fletesPerDestino[idx] || emptyFlete()} idx={idx} showTitle={descargueAddresses.length > 1} />
+                  <FleteSection 
+                    flete={fletesPerDestino[idx] || emptyFlete()} 
+                    idx={idx} 
+                    showTitle={descargueAddresses.length > 1} 
+                    updateFlete={updateFlete}
+                    computeValorNeto={computeValorNeto}
+                    computeSaldoPagar={computeSaldoPagar}
+                    formatCurrency={formatCurrency}
+                  />
                 </div>
               ))}
 
