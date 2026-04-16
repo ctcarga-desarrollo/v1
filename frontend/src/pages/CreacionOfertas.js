@@ -240,7 +240,7 @@ const emptyFlete = () => ({
   lugarPago: '', fechaPago: '', carguePagadoPor: '', descarguePagadoPor: ''
 });
 
-const emptyDestinatario = () => ({ nombre: '', identificacion: '', telefono: '', email: '' });
+const emptyDestinatario = () => ({ nombre: '', nombreResponsable: '', identificacion: '', telefono: '', email: '' });
 
 /* ---- Main Page ---- */
 const CreacionOfertas = () => {
@@ -498,7 +498,8 @@ const CreacionOfertas = () => {
     destinatarioInfo.forEach((dest, idx) => {
       const prefix = descargueAddresses.length > 1 ? `Destino ${idx + 1}: ` : '';
       if (!dest.nombre) errors.push(`${prefix}Nombre Destinatario`);
-      if (!dest.identificacion) errors.push(`${prefix}Identificaci\u00f3n Destinatario`);
+      if (!dest.nombreResponsable) errors.push(`${prefix}Nombre Responsable Destinatario`);
+      if (!dest.identificacion) errors.push(`${prefix}Identificación Destinatario`);
     });
 
     if (descargueAddresses.length > 1 && condiciones.cantidadMovilizar) {
@@ -1142,18 +1143,16 @@ const CreacionOfertas = () => {
                     <h4 className="block-subtitle">Destinatario</h4>
                     <div className="form-row cols-3">
                       <div className="form-group">
-                        <label>Nombre Destinatario *</label>
+                        <label>Destinatario *</label>
                         <input type="text" className="form-input" placeholder="Nombre del destinatario" value={destinatarioInfo[idx]?.nombre || ''} onChange={(e) => updateDestinatario(idx, 'nombre', e.target.value)} data-testid={`destinatario-nombre-${idx}`} />
                       </div>
                       <div className="form-group">
-                        <label>Identificación Destinatario *</label>
-                        <input type="text" className="form-input" placeholder="Número de identificación" value={destinatarioInfo[idx]?.identificacion || ''} onChange={(e) => updateDestinatario(idx, 'identificacion', e.target.value)} data-testid={`destinatario-identificacion-${idx}`} />
+                        <label>Nombre Responsable *</label>
+                        <input type="text" className="form-input" placeholder="Nombre del responsable" value={destinatarioInfo[idx]?.nombreResponsable || ''} onChange={(e) => updateDestinatario(idx, 'nombreResponsable', e.target.value)} data-testid={`destinatario-nombre-responsable-${idx}`} />
                       </div>
                       <div className="form-group">
-                        <label>Dirección Destinatario</label>
-                        <div className="form-input readonly" data-testid={`destinatario-direccion-${idx}`}>
-                          {addr.direccionConstruida || 'Se carga desde el Paso 2'}
-                        </div>
+                        <label>Identificación *</label>
+                        <input type="text" className="form-input" placeholder="Número de identificación" value={destinatarioInfo[idx]?.identificacion || ''} onChange={(e) => updateDestinatario(idx, 'identificacion', e.target.value)} data-testid={`destinatario-identificacion-${idx}`} />
                       </div>
                     </div>
                     <div className="form-row cols-2">
@@ -1164,6 +1163,14 @@ const CreacionOfertas = () => {
                       <div className="form-group">
                         <label>Correo electrónico</label>
                         <input type="email" className="form-input" placeholder="correo@ejemplo.com" value={destinatarioInfo[idx]?.email || ''} onChange={(e) => updateDestinatario(idx, 'email', e.target.value)} data-testid={`destinatario-email-${idx}`} />
+                      </div>
+                    </div>
+                    <div className="form-row cols-1">
+                      <div className="form-group">
+                        <label>Dirección del Destinatario</label>
+                        <div className="form-input readonly" data-testid={`destinatario-direccion-${idx}`}>
+                          {addr.direccionConstruida || 'Se carga desde el Paso 2'}
+                        </div>
                       </div>
                     </div>
                   </div>
