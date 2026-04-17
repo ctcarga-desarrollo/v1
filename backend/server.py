@@ -618,7 +618,10 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
         porcentaje = (len(asignados) / vehiculos_necesarios) * 100 if vehiculos_necesarios > 0 else 0
         
         # GARANTÍA PARA PRUEBAS: Si no se asignó ningún vehículo, generar simulados
-        if len(asignados) == 0 and vehiculos_necesarios > 0:
+        # Controlado por variable de entorno ENABLE_SIMULATION (default: true)
+        enable_simulation = os.environ.get("ENABLE_SIMULATION", "true").lower() == "true"
+        
+        if enable_simulation and len(asignados) == 0 and vehiculos_necesarios > 0:
             logger.warning(f"No se asignaron vehículos para oferta {oferta.get('codigo_oferta')}. Generando vehículos simulados para pruebas.")
             
             # Generar al menos vehiculos_necesarios vehículos simulados
@@ -657,7 +660,7 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
             porcentaje = (len(asignados) / vehiculos_necesarios) * 100 if vehiculos_necesarios > 0 else 0
         
         # Si aún hay insuficientes vehículos (menos del objetivo), completar con simulados
-        if len(asignados) < vehiculos_objetivo and vehiculos_objetivo > 0:
+        if enable_simulation and len(asignados) < vehiculos_objetivo and vehiculos_objetivo > 0:
             vehiculos_faltantes = vehiculos_objetivo - len(asignados)
             logger.info(f"Completando asignación con {vehiculos_faltantes} vehículos simulados adicionales para alcanzar objetivo.")
             
@@ -1595,6 +1598,10 @@ async def get_vehiculos_asignados(request: Request, oferta_id: str):
         
         vehiculos_detallados.append(vehiculo_detallado)
     
+    # Calcular métricas separadas de vehículos reales vs simulados
+    reales = sum(1 for v in vehiculos_detallados if v.get("marca") != "SIMULADO")
+    simulados = sum(1 for v in vehiculos_detallados if v.get("marca") == "SIMULADO")
+    
     return {
         "oferta_id": oferta_id,
         "oferta_codigo": asignacion.get("oferta_codigo"),
@@ -1602,6 +1609,8 @@ async def get_vehiculos_asignados(request: Request, oferta_id: str):
         "vehiculos": vehiculos_detallados,
         "resumen": {
             "total_asignados": len(vehiculos_detallados),
+            "reales": reales,
+            "simulados": simulados,
             "total_turnos": len(turnos_cargue),
             "porcentaje_completado": asignacion.get("porcentaje_completado", 0)
         }

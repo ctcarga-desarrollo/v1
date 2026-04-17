@@ -188,7 +188,7 @@ export default function VehiculosAsignados() {
         <h1>Vehículos Asignados</h1>
       </div>
 
-      {/* Resumen mejorado */}
+      {/* Resumen mejorado con métricas separadas */}
       <div className="oferta-section" style={{ marginBottom: '24px' }}>
         <div className="oferta-section-grid cols-4">
           <div className="info-item">
@@ -202,6 +202,17 @@ export default function VehiculosAsignados() {
             <div className="info-value" style={{ fontWeight: '700', fontSize: '16px', color: '#059669' }}>
               {datos.resumen.total_asignados}
             </div>
+            {(datos.resumen.reales > 0 || datos.resumen.simulados > 0) && (
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+                {datos.resumen.reales > 0 && (
+                  <span style={{ color: '#059669' }}>{datos.resumen.reales} reales</span>
+                )}
+                {datos.resumen.reales > 0 && datos.resumen.simulados > 0 && ' + '}
+                {datos.resumen.simulados > 0 && (
+                  <span style={{ color: '#d97706' }}>{datos.resumen.simulados} simulados</span>
+                )}
+              </div>
+            )}
           </div>
           <div className="info-item">
             <div className="info-label">Turnos Programados</div>
@@ -247,9 +258,26 @@ export default function VehiculosAsignados() {
                           fontWeight: '700', 
                           fontSize: '15px', 
                           color: '#1a202c',
-                          marginBottom: '2px'
+                          marginBottom: '2px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
                         }}>
                           {vehiculo.placa}
+                          {vehiculo.marca === 'SIMULADO' && (
+                            <span style={{
+                              padding: '2px 8px',
+                              fontSize: '10px',
+                              fontWeight: '700',
+                              background: '#fef3c7',
+                              color: '#92400e',
+                              border: '1px solid #fcd34d',
+                              borderRadius: '4px',
+                              textTransform: 'uppercase'
+                            }}>
+                              SIMULADO
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>
                           {vehiculo.marca} {vehiculo.linea}
