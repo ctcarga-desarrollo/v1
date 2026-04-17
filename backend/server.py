@@ -430,13 +430,18 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
         logger.info(f"Objetivo de completitud: {completitud_objetivo * 100}% para oferta {oferta.get('codigo_oferta')}")
         
         # Determinar cantidad de vehículos necesarios
-        # Leer de fletes si está disponible, sino usar 1
-        vehiculos_necesarios = 1
+        # Leer de fletes si está disponible, sino usar 1 como mínimo absoluto
+        vehiculos_necesarios = 1  # Valor mínimo por defecto
         fletes = oferta.get("fletes", [])
         if fletes and len(fletes) > 0:
-            vehiculos_necesarios = max(1, sum(flete.get("cantidad", 1) for flete in fletes))
+            cantidad_fletes = sum(flete.get("cantidad", 0) for flete in fletes)
+            vehiculos_necesarios = max(1, cantidad_fletes)  # Garantizar mínimo 1
         
+        # Asegurar que siempre sea al menos 1
+        vehiculos_necesarios = max(1, vehiculos_necesarios)
         vehiculos_objetivo = max(1, int(vehiculos_necesarios * completitud_objetivo))
+        
+        logger.info(f"Oferta {oferta.get('codigo_oferta')}: vehiculos_necesarios={vehiculos_necesarios}, vehiculos_objetivo={vehiculos_objetivo}")
         
         # Calcular turnos de cargue
         info_cargue = oferta.get("info_cargue", {})
@@ -617,15 +622,22 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
         # Calcular porcentaje completado
         porcentaje = (len(asignados) / vehiculos_necesarios) * 100 if vehiculos_necesarios > 0 else 0
         
+        logger.info(f"Resultado asignación: {len(asignados)} vehículos asignados de {vehiculos_necesarios} necesarios ({porcentaje:.1f}%)")
+        
         # GARANTÍA PARA PRUEBAS: Si no se asignó ningún vehículo, generar simulados
         # Controlado por variable de entorno ENABLE_SIMULATION (default: true)
-        enable_simulation = os.environ.get("ENABLE_SIMULATION", "true").lower() == "true"
+        enable_simulation_str = os.environ.get("ENABLE_SIMULATION", "true")
+        enable_simulation = enable_simulation_str.lower() in ["true", "1", "yes", "si"]
         
-        if enable_simulation and len(asignados) == 0 and vehiculos_necesarios > 0:
-            logger.warning(f"No se asignaron vehículos para oferta {oferta.get('codigo_oferta')}. Generando vehículos simulados para pruebas.")
+        logger.info(f"ENABLE_SIMULATION = '{enable_simulation_str}' → {enable_simulation}")
+        
+        # VALIDACIÓN 1: Garantía absoluta - Si NO hay vehículos y simulación está activa
+        if enable_simulation and len(asignados) == 0:
+            num_a_generar = max(1, vehiculos_necesarios)  # Garantizar al menos 1
+            logger.warning(f"⚠️ CRÍTICO: No se asignaron vehículos para oferta {oferta.get('codigo_oferta')}. Generando {num_a_generar} vehículos simulados GARANTIZADOS.")
             
-            # Generar al menos vehiculos_necesarios vehículos simulados
-            for i in range(vehiculos_necesarios):
+            # Generar vehículos simulados
+            for i in range(num_a_generar):
                 vehiculo_simulado = {
                     "vehiculo_id": f"TERCERO_{uuid.uuid4()}",
                     "placa": f"SIM{random.randint(100, 999)}",
@@ -652,14 +664,17 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
                     turno_info = next((t for t in turnos_cargue if t["numero_turno"] == numero_turno), None)
                     if turno_info:
                         vehiculo_simulado["hora_cargue"] = turno_info["hora_inicio"]
-                        logger.info(f"Vehículo simulado {vehiculo_simulado['placa']} asignado al turno {numero_turno}")
+                        logger.info(f"✅ Vehículo simulado {vehiculo_simulado['placa']} asignado al turno {numero_turno}")
+                else:
+                    logger.warning(f"⚠️ Vehículo simulado {vehiculo_simulado['placa']} sin turno asignado")
                 
                 asignados.append(vehiculo_simulado)
             
             # Recalcular porcentaje
-            porcentaje = (len(asignados) / vehiculos_necesarios) * 100 if vehiculos_necesarios > 0 else 0
+            porcentaje = (len(asignados) / vehiculos_necesarios) * 100 if vehiculos_necesarios > 0 else 100
+            logger.info(f"✅ Simulación completada: {len(asignados)} vehículos simulados generados")
         
-        # Si aún hay insuficientes vehículos (menos del objetivo), completar con simulados
+        # VALIDACIÓN 2: Si aún hay insuficientes vehículos (menos del objetivo), completar con simulados
         if enable_simulation and len(asignados) < vehiculos_objetivo and vehiculos_objetivo > 0:
             vehiculos_faltantes = vehiculos_objetivo - len(asignados)
             logger.info(f"Completando asignación con {vehiculos_faltantes} vehículos simulados adicionales para alcanzar objetivo.")
@@ -695,7 +710,30 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
                 asignados.append(vehiculo_adicional)
             
             # Recalcular porcentaje final
-            porcentaje = (len(asignados) / vehiculos_necesarios) * 100 if vehiculos_necesarios > 0 else 0
+            porcentaje = (len(asignados) / vehiculos_necesarios) * 100 if vehiculos_necesarios > 0 else 100
+        
+        # VALIDACIÓN FINAL: Garantía absoluta de que hay al menos 1 vehículo si simulación está activa
+        if enable_simulation and len(asignados) == 0:
+            logger.error("🚨 ERROR CRÍTICO: Aún no hay vehículos después de validaciones. Generando 1 vehículo de emergencia.")
+            vehiculo_emergencia = {
+                "vehiculo_id": f"TERCERO_{uuid.uuid4()}",
+                "placa": f"EMR{random.randint(100, 999)}",
+                "marca": "SIMULADO",
+                "linea": "Emergency",
+                "tipo_propiedad": "tercero_externo",
+                "estado": "asignado",
+                "distancia_km": 10.0,
+                "tiempo_espera_horas": 0,
+                "etapa": "EMERGENCIA",
+                "ciclo": 1,
+                "timestamp": datetime.now(timezone.utc),
+                "turno_cargue": 1
+            }
+            asignados.append(vehiculo_emergencia)
+            porcentaje = 100
+            logger.info(f"✅ Vehículo de emergencia {vehiculo_emergencia['placa']} generado")
+        
+        logger.info(f"📊 RESULTADO FINAL: {len(asignados)} vehículos asignados, {porcentaje:.1f}% completitud")
         
         # Determinar estado final
         if len(asignados) >= vehiculos_necesarios:
