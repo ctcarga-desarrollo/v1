@@ -748,6 +748,181 @@ Muestra datos de contacto:
 
 ---
 
+## Sistema de Avance de Estados (Pruebas Funcionales)
+
+### Descripción
+Sistema que permite simular el progreso operativo de cada vehículo individualmente a través de los estados del proceso, facilitando pruebas funcionales completas sin necesidad de integración con sistemas reales.
+
+### Flujo de Estados
+
+**Secuencia obligatoria (no se puede saltar ni retroceder):**
+```
+asignado → en_cargue → en_ruta → en_descargue → finalizado
+```
+
+### Controles de Acceso
+
+#### 1. Botón "Asignar Vehículos"
+- **Visible solo cuando:** Estado de oferta = "SIN ASIGNAR" o "Sin Asignar"
+- **Oculto cuando:** Oferta ya publicada o en cualquier otro estado
+- **Función:** Evita asignaciones duplicadas y mantiene integridad del flujo
+
+#### 2. Botón "Avanzar Estado" (por vehículo)
+- **Ubicación:** Columna adicional en tabla de Vehículos Asignados
+- **Icono:** Flecha derecha (ChevronRight)
+- **Color:** Verde (#dcfce7 / #166534)
+- **Habilitado:** Solo si estado ≠ "finalizado"
+- **Función:** Avanza UN vehículo específico al siguiente estado
+
+### Características Técnicas
+
+#### Backend: `POST /api/vehiculos/{vehiculo_id}/avanzar-estado`
+
+**Parámetros:**
+```json
+{
+  "oferta_id": "uuid-de-la-oferta"
+}
+```
+
+**Validaciones:**
+- ✅ No permite saltar estados (valida índice en flujo)
+- ✅ No permite retroceder (solo avance secuencial)
+- ✅ Valida que vehículo no esté en estado "finalizado"
+- ✅ Actualiza `fecha_cambio_estado` para cálculo de semáforo
+
+**Actualización dual:**
+1. Colección `vehiculos` (si es vehículo registrado)
+2. Array `asignaciones_vehiculos.vehiculos_asignados`
+
+**Registro de actividad:**
+- Módulo: VEHICULOS
+- Acción: CAMBIO_ESTADO
+- Detalles: estado_anterior, estado_nuevo, oferta_id
+
+#### Frontend: Interfaz de Avance
+
+**Nueva columna en tabla:**
+- Botón individual por cada vehículo
+- Feedback visual durante proceso (loading state)
+- Recarga automática de datos después de avanzar
+- Mensajes de éxito/error
+
+**Estado de UI:**
+```javascript
+const [avanzandoEstado, setAvanzandoEstado] = useState(null);
+// Mantiene ID del vehículo en proceso para deshabilitar botón
+```
+
+### Avance Individual vs Grupal
+
+**❌ No implementado:** Avance de todos los vehículos simultáneamente
+
+**✅ Implementado:** Avance individual por vehículo
+
+**Razón:** Permite simular escenarios realistas donde cada vehículo progresa a su propio ritmo:
+- Vehículo 1 puede estar "en_ruta"
+- Vehículo 2 puede estar "en_cargue"
+- Vehículo 3 puede estar "finalizado"
+
+### Estados Independientes
+
+**Importante:** El cambio de estado de vehículos **NO modifica automáticamente** el estado de la oferta.
+
+- Oferta mantiene su estado actual
+- Gestión de estado de oferta es independiente
+- Permite control granular del flujo operativo
+
+### Persistencia de Datos
+
+**Garantías:**
+- ✅ No se eliminan ofertas
+- ✅ No se eliminan vehículos
+- ✅ No se reinician datos automáticamente
+- ✅ Solo se actualizan estados y timestamps
+- ✅ Historial completo en `activity_logs`
+
+### Ejemplo de Flujo de Prueba
+
+```
+1. Crear Oferta
+   └─ Estado: SIN ASIGNAR
+   └─ Botón "Asignar vehículos" VISIBLE ✅
+
+2. Publicar Oferta
+   └─ Click en "Asignar vehículos"
+   └─ Asignación automática + cálculo de turnos
+   └─ Vehículos: "asignado"
+   └─ Botón "Asignar vehículos" OCULTO ✅
+   └─ Botón "Vehículos asignados" VISIBLE ✅
+
+3. Ver Vehículos Asignados
+   └─ Tabla con todos los vehículos en estado "asignado"
+   └─ Columna "Avanzar Estado" con botón verde por vehículo
+
+4. Simular Progreso (Vehículo 1)
+   └─ Click en "Avanzar Estado"
+   └─ asignado → en_cargue ✅
+   └─ Semáforo inicia cálculo de tiempo
+   
+   └─ Click en "Avanzar Estado"
+   └─ en_cargue → en_ruta ✅
+   
+   └─ Click en "Avanzar Estado"
+   └─ en_ruta → en_descargue ✅
+   
+   └─ Click en "Avanzar Estado"
+   └─ en_descargue → finalizado ✅
+   └─ Botón se deshabilita (muestra "Finalizado")
+
+5. Simular Progreso (Vehículo 2)
+   └─ Progreso independiente de Vehículo 1
+   └─ Puede estar en cualquier estado diferente
+```
+
+### Integración con Semáforo
+
+El sistema de semáforo utiliza `fecha_cambio_estado` actualizada por este sistema:
+
+**Cálculo:**
+```javascript
+tiempo_transcurrido = Ahora - fecha_cambio_estado
+tiempo_estimado = tiempos_estimados[estado_actual]
+
+if (tiempo_transcurrido <= tiempo_estimado) {
+  semaforo = VERDE (dentro del tiempo)
+} else {
+  semaforo = ROJO (fuera del tiempo)
+}
+```
+
+### Validación de Errores
+
+**Intentar avanzar estado finalizado:**
+```json
+{
+  "detail": "El vehículo ya finalizó el proceso"
+}
+```
+
+**Estado inválido:**
+```json
+{
+  "detail": "Estado actual no válido o no se puede avanzar más"
+}
+```
+
+### Beneficios para QA/Testing
+
+1. ✅ **Pruebas de flujo completo** sin esperar procesos reales
+2. ✅ **Validación de semáforo** con diferentes tiempos
+3. ✅ **Pruebas de estados mixtos** (varios vehículos en diferentes estados)
+4. ✅ **Validación de UI** responsive a cambios de estado
+5. ✅ **Auditoría completa** de todos los cambios
+6. ✅ **Reproducibilidad** de escenarios específicos
+
+---
+
 ## API REST
 
 Base URL: `/api`
@@ -770,6 +945,7 @@ Base URL: `/api`
 | POST | `/api/ofertas/{id}/finalizar` | ADMIN, OPERADOR | Finalizar oferta y liberar vehículos | ✅ CAMBIO_ESTADO |
 | GET | `/api/ofertas/{id}/asignacion` | Todos | Obtener estado de asignación de vehículos | No |
 | GET | `/api/ofertas/{id}/vehiculos-asignados` | Todos | Obtener lista detallada de vehículos asignados con turnos | No |
+| POST | `/api/vehiculos/{vehiculo_id}/avanzar-estado` | ADMIN, OPERADOR | Avanzar estado de vehículo al siguiente en el flujo | ✅ CAMBIO_ESTADO |
 | DELETE | `/api/ofertas/{id}` | ADMIN, OPERADOR | Eliminar oferta | ✅ ELIMINAR |
 
 ### Estadísticas
@@ -1156,7 +1332,7 @@ Variables de entorno:
 - ✅ Nuevo endpoint `GET /api/ofertas/{id}/vehiculos-asignados`
 - ✅ Botón "Vehículos asignados" en tabla de ofertas (solo para ofertas publicadas)
 - ✅ Componente `VehiculosAsignados.jsx` con tabla completa
-- ✅ Columnas: Placa, Conductor, Tipo, Estado, Turno de cargue, Acciones
+- ✅ Columnas: Placa, Conductor, Tipo, Estado del proceso, Turno de cargue, Acciones, Avanzar Estado
 - ✅ Identificación visual por tipo de vehículo con badges de colores
 - ✅ Semáforo de estado por proceso (verde/rojo según tiempo estimado)
 - ✅ Lógica de semáforo independiente por estado (en_cargue/en_ruta/en_descargue)
@@ -1164,6 +1340,23 @@ Variables de entorno:
 - ✅ Integración completa con datos reales de turnos y asignaciones
 - ✅ Estructura preparada para datos reales de conductores y GPS
 - ✅ Ruta protegida: `/ofertas/:id/vehiculos-asignados`
+- ✅ Diseño consistente con el resto del sistema (usando clases compartidas)
+
+#### **Sistema de Avance de Estados (Pruebas Funcionales):**
+- ✅ Nuevo endpoint `POST /api/vehiculos/{vehiculo_id}/avanzar-estado`
+- ✅ Flujo de estados: asignado → en_cargue → en_ruta → en_descargue → finalizado
+- ✅ Avance individual por vehículo (no grupal)
+- ✅ Validaciones: no saltar estados, no retroceder
+- ✅ Actualización de `fecha_cambio_estado` para semáforo
+- ✅ Botón "Asignar vehículos" solo visible para ofertas SIN ASIGNAR
+- ✅ Columna "Avanzar Estado" con botón verde por vehículo
+- ✅ Botón deshabilitado para vehículos en estado "finalizado"
+- ✅ Feedback visual durante avance (loading state)
+- ✅ Recarga automática de datos después de cambio
+- ✅ Registro completo en activity_logs
+- ✅ Persistencia total de datos (no se eliminan)
+- ✅ Estados de vehículos independientes del estado de oferta
+- ✅ Permite simular flujo operativo completo para pruebas
 
 ---
 
@@ -1177,5 +1370,5 @@ Para reportar problemas, solicitar funcionalidades o contribuir al proyecto:
 ---
 
 **Última actualización:** 2025-12-17  
-**Versión:** 1.6.0  
+**Versión:** 1.7.0  
 **Estado:** ✅ Producción
