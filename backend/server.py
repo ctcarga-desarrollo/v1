@@ -1721,19 +1721,14 @@ async def avanzar_estado_vehiculo(request: Request, vehiculo_id: str, data: dict
         
         # Registrar actividad
         await registrar_actividad(
-            db=db,
-            usuario=user["email"],
+            usuario=user,
             accion="CAMBIO_ESTADO",
-            modulo="VEHICULOS",
+            modulo="vehiculos",
             registro_id=vehiculo_id,
-            tenant_id=user["tenant_id"],
-            ip=request.client.host if request.client else "unknown",
-            detalles={
-                "estado_anterior": estado_actual,
-                "estado_nuevo": siguiente_estado,
-                "oferta_id": oferta_id,
-                "tipo": "tercero_externo"
-            }
+            detalles=f"Cambio de estado: {estado_actual} → {siguiente_estado} (Tercero externo, Oferta: {oferta_id})",
+            ip_address=request.client.host if request.client else "unknown",
+            datos_anteriores={"estado": estado_actual},
+            datos_nuevos={"estado": siguiente_estado}
         )
         
         return {
@@ -1792,19 +1787,14 @@ async def avanzar_estado_vehiculo(request: Request, vehiculo_id: str, data: dict
         
         # Registrar actividad
         await registrar_actividad(
-            db=db,
-            usuario=user["email"],
+            usuario=user,
             accion="CAMBIO_ESTADO",
-            modulo="VEHICULOS",
+            modulo="vehiculos",
             registro_id=vehiculo_id,
-            tenant_id=user["tenant_id"],
-            ip=request.client.host if request.client else "unknown",
-            detalles={
-                "placa": vehiculo.get("placa"),
-                "estado_anterior": estado_actual,
-                "estado_nuevo": siguiente_estado,
-                "oferta_id": oferta_id
-            }
+            detalles=f"Cambio de estado: {estado_actual} → {siguiente_estado} (Placa: {vehiculo.get('placa')}, Oferta: {oferta_id})",
+            ip_address=request.client.host if request.client else "unknown",
+            datos_anteriores={"estado": estado_actual},
+            datos_nuevos={"estado": siguiente_estado}
         )
         
         return {
@@ -1937,14 +1927,13 @@ async def simular_asignacion_progresiva(request: Request, oferta_id: str, data: 
     
     # Registrar actividad
     await registrar_actividad(
-        db=db,
-        usuario=user["email"],
-        accion="ASIGNACION_MANUAL",
-        modulo="OFERTAS",
+        usuario=user,
+        accion="CAMBIO_ESTADO",
+        modulo="ofertas",
         registro_id=oferta_id,
-        tenant_id=user["tenant_id"],
-        ip=request.client.host if request.client else "unknown",
-        detalles={
+        detalles=f"Simulación progresiva: {cantidad} vehículo(s) agregado(s). Total: {len(vehiculos_asignados)}",
+        ip_address=request.client.host if request.client else "unknown",
+        datos_nuevos={
             "cantidad": cantidad,
             "vehiculos_agregados": [v["placa"] for v in nuevos_vehiculos],
             "total_asignados": len(vehiculos_asignados)

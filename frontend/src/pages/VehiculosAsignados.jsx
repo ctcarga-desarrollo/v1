@@ -14,6 +14,7 @@ export default function VehiculosAsignados() {
   const [modalGPS, setModalGPS] = useState(null);
   const [modalContacto, setModalContacto] = useState(null);
   const [avanzandoEstado, setAvanzandoEstado] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     cargarVehiculosAsignados();
@@ -31,7 +32,9 @@ export default function VehiculosAsignados() {
       });
       if (res.ok) {
         const data = await res.json();
-        setDatos(data);
+        // Forzar nueva referencia para asegurar re-render
+        setDatos({...data, vehiculos: [...(data.vehiculos || [])]});
+        setRefreshKey(prev => prev + 1);
       } else {
         console.error('Error al cargar vehículos:', res.status);
       }
@@ -66,7 +69,9 @@ export default function VehiculosAsignados() {
         
         if (reloadRes.ok) {
           const newData = await reloadRes.json();
-          setDatos(newData);
+          // Forzar nueva referencia para asegurar re-render
+          setDatos({...newData, vehiculos: [...(newData.vehiculos || [])]});
+          setRefreshKey(prev => prev + 1);
           console.log('✅ Estado actualizado:', result.mensaje);
         }
       } else {
@@ -105,7 +110,9 @@ export default function VehiculosAsignados() {
         
         if (reloadRes.ok) {
           const newData = await reloadRes.json();
-          setDatos(newData);
+          // Forzar nueva referencia para asegurar re-render
+          setDatos({...newData, vehiculos: [...(newData.vehiculos || [])]});
+          setRefreshKey(prev => prev + 1);
           console.log('✅ Simulación exitosa:', result.mensaje);
         }
       } else {
@@ -321,11 +328,11 @@ export default function VehiculosAsignados() {
             </tr>
           </thead>
           <tbody>
-            {datos.vehiculos.map((vehiculo, idx) => {
+            {datos.vehiculos.map((vehiculo) => {
               const semaforo = calcularSemaforo(vehiculo);
               
               return (
-                <tr key={idx}>
+                <tr key={vehiculo.vehiculo_id || vehiculo.placa}>
                   {/* Placa */}
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

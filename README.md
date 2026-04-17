@@ -1358,6 +1358,31 @@ Variables de entorno:
 - ✅ Estados de vehículos independientes del estado de oferta
 - ✅ Permite simular flujo operativo completo para pruebas
 
+#### **[BUG FIX CRÍTICO] Reactividad UI y Errores Backend (2026-04-17):**
+- 🔧 **Fix React State Mutation**: Corregida reactividad en `VehiculosAsignados.jsx`
+  - Problema: Tabla no se actualizaba después de `Simular Asignación` o `Avanzar Estado`
+  - Solución: Forzar nuevas referencias de estado usando spread operator `{...data, vehiculos: [...data.vehiculos]}`
+  - Agregado `refreshKey` como contador interno para forzar re-render
+  - Cambiada `key` del map de `idx` (índice) a `vehiculo.vehiculo_id` (único y estable)
+- 🔧 **Fix Backend TypeError**: Corregidas llamadas incorrectas a `registrar_actividad()`
+  - Error: `TypeError: registrar_actividad() got an unexpected keyword argument 'db'`
+  - Archivos afectados: `/api/vehiculos/{vehiculo_id}/avanzar-estado`, `/api/ofertas/{id}/simular-asignacion-progresiva`
+  - Líneas corregidas: 1723, 1794, 1929 en `server.py`
+  - Firma correcta respetada: `usuario` (dict), `accion`, `modulo`, `registro_id`, `detalles` (string), `ip_address`
+- ✅ Flujo completo de pruebas funcionales ahora operativo sin errores
+- ✅ UI responde instantáneamente sin requerir refresh manual del navegador
+
+#### **Sistema de Simulación Progresiva:**
+- ✅ Endpoint `POST /api/ofertas/{id}/simular-asignacion-progresiva`
+- ✅ Parámetro `cantidad` (1-10 vehículos por llamada)
+- ✅ Botón "Simular Asignación" (ícono +) ubicado debajo de la tabla
+- ✅ Creación dinámica de vehículos simulados (marca SIMULADO)
+- ✅ Badge visual "SIMULADO" con estilo destacado en amarillo
+- ✅ Métricas separadas: vehículos reales vs simulados en resumen
+- ✅ Asignación de turnos automática para vehículos simulados
+- ✅ Variable de entorno `ENABLE_SIMULATION` para control en producción
+- ✅ Integración total con flujo de avance de estados
+
 ---
 
 ## Soporte y Contacto
