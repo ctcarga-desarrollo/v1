@@ -226,6 +226,8 @@ export default function VehiculosAsignados() {
   }
 
   if (!datos || !datos.vehiculos || datos.vehiculos.length === 0) {
+    const asignacionCompleta = datos?.resumen?.asignacion_completa || false;
+    
     return (
       <div className="ofertas-container">
         <div className="ofertas-header">
@@ -238,26 +240,30 @@ export default function VehiculosAsignados() {
         <div style={{ textAlign: 'center', padding: '40px' }}>
           <AlertCircle size={48} style={{ color: '#888', margin: '0 auto 16px' }} />
           <p>No hay vehículos asignados a esta oferta.</p>
-          <p style={{ fontSize: '14px', color: '#64748b', marginTop: '12px' }}>
-            Usa el botón "Simular Asignación" para agregar vehículos progresivamente.
-          </p>
+          {datos?.resumen?.vehiculos_requeridos && (
+            <p style={{ fontSize: '14px', color: '#64748b', marginTop: '12px' }}>
+              Se requieren {datos.resumen.vehiculos_requeridos} vehículo(s). Usa el botón "Simular Asignación" para agregar vehículos progresivamente.
+            </p>
+          )}
         </div>
         
         {/* Botón centrado debajo */}
-        <div style={{ textAlign: 'center', marginTop: '24px' }}>
-          <button 
-            onClick={() => simularAsignacion(1)}
-            disabled={avanzandoEstado === 'simulando'}
-            className="btn-icon-action btn-icon-asignar"
-            style={{ 
-              opacity: avanzandoEstado === 'simulando' ? 0.6 : 1,
-              cursor: avanzandoEstado === 'simulando' ? 'not-allowed' : 'pointer'
-            }}
-            title="Agregar 1 vehículo simulado"
-          >
-            <Plus size={16} />
-          </button>
-        </div>
+        {!asignacionCompleta && (
+          <div style={{ textAlign: 'center', marginTop: '24px' }}>
+            <button 
+              onClick={() => simularAsignacion(1)}
+              disabled={avanzandoEstado === 'simulando'}
+              className="btn-icon-action btn-icon-asignar"
+              style={{ 
+                opacity: avanzandoEstado === 'simulando' ? 0.6 : 1,
+                cursor: avanzandoEstado === 'simulando' ? 'not-allowed' : 'pointer'
+              }}
+              title="Agregar 1 vehículo simulado"
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -283,8 +289,8 @@ export default function VehiculosAsignados() {
           </div>
           <div className="info-item">
             <div className="info-label">Vehículos Asignados</div>
-            <div className="info-value" style={{ fontWeight: '700', fontSize: '16px', color: '#059669' }}>
-              {datos.resumen.total_asignados}
+            <div className="info-value" style={{ fontWeight: '700', fontSize: '16px', color: datos.resumen.asignacion_completa ? '#059669' : '#d97706' }}>
+              {datos.resumen.total_asignados} / {datos.resumen.vehiculos_requeridos}
             </div>
             {(datos.resumen.reales > 0 || datos.resumen.simulados > 0) && (
               <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
@@ -305,9 +311,13 @@ export default function VehiculosAsignados() {
             </div>
           </div>
           <div className="info-item">
-            <div className="info-label">Completitud</div>
-            <div className="info-value" style={{ fontWeight: '700', fontSize: '16px', color: '#2563eb' }}>
-              {datos.resumen.porcentaje_completado.toFixed(1)}%
+            <div className="info-label">Estado</div>
+            <div className="info-value" style={{ 
+              fontWeight: '700', 
+              fontSize: '16px', 
+              color: datos.resumen.asignacion_completa ? '#059669' : '#2563eb' 
+            }}>
+              {datos.resumen.asignacion_completa ? '✅ Completa' : `${datos.resumen.porcentaje_completado.toFixed(0)}%`}
             </div>
           </div>
         </div>
@@ -521,25 +531,42 @@ export default function VehiculosAsignados() {
         paddingBottom: '24px',
         borderBottom: '1px solid #e5e7eb'
       }}>
-        <button 
-          onClick={() => simularAsignacion(1)}
-          disabled={avanzandoEstado === 'simulando'}
-          className="btn-icon-action btn-icon-asignar"
-          style={{ 
-            opacity: avanzandoEstado === 'simulando' ? 0.6 : 1,
-            cursor: avanzandoEstado === 'simulando' ? 'not-allowed' : 'pointer'
-          }}
-          title="Agregar 1 vehículo simulado"
-        >
-          <Plus size={16} />
-        </button>
-        <div style={{ 
-          fontSize: '12px', 
-          color: '#64748b', 
-          marginTop: '8px' 
-        }}>
-          Click para agregar 1 vehículo simulado
-        </div>
+        {datos.resumen.asignacion_completa ? (
+          <div style={{
+            padding: '12px 24px',
+            background: '#dcfce7',
+            color: '#166534',
+            borderRadius: '8px',
+            border: '1px solid #86efac',
+            display: 'inline-block',
+            fontWeight: '600',
+            fontSize: '14px'
+          }}>
+            ✅ Asignación completa ({datos.resumen.total_asignados}/{datos.resumen.vehiculos_requeridos} vehículos)
+          </div>
+        ) : (
+          <>
+            <button 
+              onClick={() => simularAsignacion(1)}
+              disabled={avanzandoEstado === 'simulando'}
+              className="btn-icon-action btn-icon-asignar"
+              style={{ 
+                opacity: avanzandoEstado === 'simulando' ? 0.6 : 1,
+                cursor: avanzandoEstado === 'simulando' ? 'not-allowed' : 'pointer'
+              }}
+              title="Agregar 1 vehículo simulado"
+            >
+              <Plus size={16} />
+            </button>
+            <div style={{ 
+              fontSize: '12px', 
+              color: '#64748b', 
+              marginTop: '8px' 
+            }}>
+              Click para agregar 1 vehículo simulado ({datos.resumen.total_asignados}/{datos.resumen.vehiculos_requeridos})
+            </div>
+          </>
+        )}
       </div>
 
       {/* Modales con diseño mejorado */}

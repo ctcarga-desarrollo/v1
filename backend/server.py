@@ -1640,6 +1640,9 @@ async def get_vehiculos_asignados(request: Request, oferta_id: str):
     reales = sum(1 for v in vehiculos_detallados if v.get("marca") != "SIMULADO")
     simulados = sum(1 for v in vehiculos_detallados if v.get("marca") == "SIMULADO")
     
+    # Obtener vehiculos_requeridos
+    vehiculos_requeridos = asignacion.get("vehiculos_requeridos", 1)
+    
     return {
         "oferta_id": oferta_id,
         "oferta_codigo": asignacion.get("oferta_codigo"),
@@ -1647,10 +1650,12 @@ async def get_vehiculos_asignados(request: Request, oferta_id: str):
         "vehiculos": vehiculos_detallados,
         "resumen": {
             "total_asignados": len(vehiculos_detallados),
+            "vehiculos_requeridos": vehiculos_requeridos,
             "reales": reales,
             "simulados": simulados,
             "total_turnos": len(turnos_cargue),
-            "porcentaje_completado": asignacion.get("porcentaje_completado", 0)
+            "porcentaje_completado": asignacion.get("porcentaje_completado", 0),
+            "asignacion_completa": len(vehiculos_detallados) >= vehiculos_requeridos
         }
     }
 
@@ -1812,6 +1817,10 @@ async def simular_asignacion_progresiva(request: Request, oferta_id: str, data: 
     """
     Simula la asignación progresiva de vehículos a una oferta.
     Permite agregar vehículos simulados uno por uno o en lote para pruebas.
+    
+    REGLAS CRÍTICAS:
+    - NO se pueden asignar más vehículos de los requeridos
+    - Al completar la cantidad requerida, cambia automáticamente el estado
     """
     user = await get_current_user(request)
     check_role(user, ROLE_WRITE)
@@ -1824,6 +1833,26 @@ async def simular_asignacion_progresiva(request: Request, oferta_id: str, data: 
     
     if not oferta:
         raise HTTPException(status_code=404, detail="Oferta no encontrada")
+    
+    # Calcular vehículos requeridos desde los fletes de la oferta
+    vehiculos_necesarios = 1  # Valor mínimo por defecto
+    fletes = oferta.get("fletes", [])
+    
+    if fletes:
+        if isinstance(fletes, list) and len(fletes) > 0:
+            # Si es lista de objetos
+            if isinstance(fletes[0], dict):
+                cantidad_fletes = sum(flete.get("cantidad", 0) for flete in fletes)
+                vehiculos_necesarios = max(1, cantidad_fletes)
+            else:
+                # Si es lista de strings, usar la longitud
+                vehiculos_necesarios = max(1, len(fletes))
+        elif isinstance(fletes, dict):
+            # Si es un dict con cantidad
+            vehiculos_necesarios = max(1, fletes.get("cantidad", 1))
+    
+    # Asegurar mínimo 1
+    vehiculos_necesarios = max(1, vehiculos_necesarios)
     
     # Buscar o crear asignación
     asignacion = await db.asignaciones_vehiculos.find_one(
@@ -1842,11 +1871,11 @@ async def simular_asignacion_progresiva(request: Request, oferta_id: str, data: 
         if not hora_inicio:
             hora_inicio = (datetime.now(timezone.utc) + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
         
-        # Calcular turnos para muchos vehículos (suficiente para asignación progresiva)
+        # Calcular turnos para la cantidad exacta requerida
         turnos_cargue = calcular_turnos_cargue(
             hora_inicio=hora_inicio,
             tiempo_estimado_mins=tiempo_estimado,
-            num_vehiculos_total=20,  # Calculamos para 20 vehículos
+            num_vehiculos_total=vehiculos_necesarios,
             sitios_cargue=sitios_cargue
         )
         
@@ -1856,8 +1885,8 @@ async def simular_asignacion_progresiva(request: Request, oferta_id: str, data: 
             "oferta_codigo": oferta.get("codigo_oferta", ""),
             "tenant_id": user["tenant_id"],
             "estado_asignacion": "EN_PROCESO",
-            "vehiculos_requeridos": 1,
-            "vehiculos_objetivo": 1,
+            "vehiculos_requeridos": vehiculos_necesarios,
+            "vehiculos_objetivo": vehiculos_necesarios,
             "vehiculos_asignados": [],
             "vehiculos_rechazados": [],
             "vehiculos_contactados": [],
@@ -1872,16 +1901,32 @@ async def simular_asignacion_progresiva(request: Request, oferta_id: str, data: 
         }
         
         await db.asignaciones_vehiculos.insert_one(asignacion)
-        logger.info(f"Asignación creada para oferta {oferta.get('codigo_oferta')}")
+        logger.info(f"Asignación creada para oferta {oferta.get('codigo_oferta')} con {vehiculos_necesarios} vehículos requeridos")
     
     # Obtener turnos y lista actual de asignados
     turnos_cargue = asignacion.get("turnos_cargue", [])
     vehiculos_asignados = asignacion.get("vehiculos_asignados", [])
+    vehiculos_requeridos = asignacion.get("vehiculos_requeridos", vehiculos_necesarios)
+    
+    # ✅ VALIDACIÓN CRÍTICA 1: No permitir asignar más de los requeridos
+    vehiculos_disponibles = vehiculos_requeridos - len(vehiculos_asignados)
+    
+    if vehiculos_disponibles <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Asignación completa: ya se asignaron {len(vehiculos_asignados)}/{vehiculos_requeridos} vehículos requeridos. No se pueden agregar más."
+        )
+    
+    # Ajustar cantidad si excede los disponibles
+    cantidad_a_agregar = min(cantidad, vehiculos_disponibles)
+    
+    if cantidad_a_agregar < cantidad:
+        logger.warning(f"Se solicitaron {cantidad} vehículos pero solo quedan {vehiculos_disponibles} disponibles. Se agregarán {cantidad_a_agregar}.")
     
     # Generar nuevos vehículos simulados
     nuevos_vehiculos = []
     
-    for i in range(cantidad):
+    for i in range(cantidad_a_agregar):
         vehiculo_simulado = {
             "vehiculo_id": f"TERCERO_{uuid.uuid4()}",
             "placa": f"SIM{random.randint(100, 999)}",
@@ -1912,6 +1957,18 @@ async def simular_asignacion_progresiva(request: Request, oferta_id: str, data: 
         nuevos_vehiculos.append(vehiculo_simulado)
         vehiculos_asignados.append(vehiculo_simulado)
     
+    # Calcular porcentaje
+    porcentaje_completado = int((len(vehiculos_asignados) / vehiculos_requeridos) * 100)
+    
+    # ✅ VALIDACIÓN CRÍTICA 2: Cambiar estado automáticamente al completar
+    nuevo_estado_asignacion = "EN_PROCESO"
+    nuevo_estado_oferta = None
+    
+    if len(vehiculos_asignados) >= vehiculos_requeridos:
+        nuevo_estado_asignacion = "COMPLETADA"
+        nuevo_estado_oferta = "ASIGNADA"  # Estado cuando la asignación está completa
+        logger.info(f"✅ Asignación completada para oferta {oferta.get('codigo_oferta')}: {len(vehiculos_asignados)}/{vehiculos_requeridos} vehículos")
+    
     # Actualizar asignación
     await db.asignaciones_vehiculos.update_one(
         {"id": asignacion["id"]},
@@ -1920,10 +1977,24 @@ async def simular_asignacion_progresiva(request: Request, oferta_id: str, data: 
                 "vehiculos_asignados": vehiculos_asignados,
                 "turnos_cargue": turnos_cargue,
                 "fecha_ultima_actualizacion": datetime.now(timezone.utc),
-                "porcentaje_completado": len(vehiculos_asignados) * 20  # Simulado
+                "porcentaje_completado": porcentaje_completado,
+                "estado_asignacion": nuevo_estado_asignacion
             }
         }
     )
+    
+    # ✅ Actualizar estado de la oferta si se completó la asignación
+    if nuevo_estado_oferta:
+        await db.ofertas.update_one(
+            {"id": oferta_id, "tenant_id": user["tenant_id"]},
+            {
+                "$set": {
+                    "estado": nuevo_estado_oferta,
+                    "fecha_ultima_actualizacion": datetime.now(timezone.utc)
+                }
+            }
+        )
+        logger.info(f"Estado de oferta {oferta.get('codigo_oferta')} cambiado a: {nuevo_estado_oferta}")
     
     # Registrar actividad
     await registrar_actividad(
@@ -1931,22 +2002,33 @@ async def simular_asignacion_progresiva(request: Request, oferta_id: str, data: 
         accion="CAMBIO_ESTADO",
         modulo="ofertas",
         registro_id=oferta_id,
-        detalles=f"Simulación progresiva: {cantidad} vehículo(s) agregado(s). Total: {len(vehiculos_asignados)}",
+        detalles=f"Simulación progresiva: {cantidad_a_agregar} vehículo(s) agregado(s). Total: {len(vehiculos_asignados)}/{vehiculos_requeridos}" + 
+                 (f" - Estado cambiado a {nuevo_estado_oferta}" if nuevo_estado_oferta else ""),
         ip_address=request.client.host if request.client else "unknown",
         datos_nuevos={
-            "cantidad": cantidad,
+            "cantidad_solicitada": cantidad,
+            "cantidad_agregada": cantidad_a_agregar,
             "vehiculos_agregados": [v["placa"] for v in nuevos_vehiculos],
-            "total_asignados": len(vehiculos_asignados)
+            "total_asignados": len(vehiculos_asignados),
+            "vehiculos_requeridos": vehiculos_requeridos,
+            "estado_asignacion": nuevo_estado_asignacion,
+            "estado_oferta": nuevo_estado_oferta
         }
     )
     
     return {
         "success": True,
         "oferta_id": oferta_id,
-        "cantidad_agregada": cantidad,
+        "cantidad_solicitada": cantidad,
+        "cantidad_agregada": cantidad_a_agregar,
         "vehiculos_agregados": [{"placa": v["placa"], "turno": v.get("turno_cargue")} for v in nuevos_vehiculos],
         "total_asignados": len(vehiculos_asignados),
-        "mensaje": f"Se agregaron {cantidad} vehículo(s) simulado(s). Total: {len(vehiculos_asignados)}"
+        "vehiculos_requeridos": vehiculos_requeridos,
+        "asignacion_completa": len(vehiculos_asignados) >= vehiculos_requeridos,
+        "estado_asignacion": nuevo_estado_asignacion,
+        "estado_oferta": nuevo_estado_oferta,
+        "mensaje": f"Se agregaron {cantidad_a_agregar} vehículo(s) simulado(s). Total: {len(vehiculos_asignados)}/{vehiculos_requeridos}" +
+                   (" - ✅ Asignación completada" if len(vehiculos_asignados) >= vehiculos_requeridos else "")
     }
 
 
