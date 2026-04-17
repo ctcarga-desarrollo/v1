@@ -1817,6 +1817,150 @@ async def avanzar_estado_vehiculo(request: Request, vehiculo_id: str, data: dict
         }
 
 
+@api_router.post("/ofertas/{oferta_id}/simular-asignacion-progresiva")
+async def simular_asignacion_progresiva(request: Request, oferta_id: str, data: dict):
+    """
+    Simula la asignación progresiva de vehículos a una oferta.
+    Permite agregar vehículos simulados uno por uno o en lote para pruebas.
+    """
+    user = await get_current_user(request)
+    check_role(user, ROLE_WRITE)
+    
+    cantidad = data.get("cantidad", 1)  # Por defecto agrega 1 vehículo
+    cantidad = max(1, min(cantidad, 10))  # Entre 1 y 10 máximo por llamada
+    
+    # Buscar la oferta
+    oferta = await db.ofertas.find_one({"id": oferta_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    
+    if not oferta:
+        raise HTTPException(status_code=404, detail="Oferta no encontrada")
+    
+    # Buscar o crear asignación
+    asignacion = await db.asignaciones_vehiculos.find_one(
+        {"oferta_id": oferta_id, "tenant_id": user["tenant_id"]},
+        {"_id": 0}
+    )
+    
+    # Si no existe asignación, crear una nueva
+    if not asignacion:
+        # Calcular turnos de cargue
+        info_cargue = oferta.get("info_cargue", {})
+        hora_inicio = info_cargue.get("fechaInicio") or info_cargue.get("horaInicio")
+        tiempo_estimado = info_cargue.get("tiempoEstimado", 60)
+        sitios_cargue = info_cargue.get("sitiosCargue", 1)
+        
+        if not hora_inicio:
+            hora_inicio = (datetime.now(timezone.utc) + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+        
+        # Calcular turnos para muchos vehículos (suficiente para asignación progresiva)
+        turnos_cargue = calcular_turnos_cargue(
+            hora_inicio=hora_inicio,
+            tiempo_estimado_mins=tiempo_estimado,
+            num_vehiculos_total=20,  # Calculamos para 20 vehículos
+            sitios_cargue=sitios_cargue
+        )
+        
+        asignacion = {
+            "id": str(uuid.uuid4()),
+            "oferta_id": oferta_id,
+            "oferta_codigo": oferta.get("codigo_oferta", ""),
+            "tenant_id": user["tenant_id"],
+            "estado_asignacion": "EN_PROCESO",
+            "vehiculos_requeridos": 1,
+            "vehiculos_objetivo": 1,
+            "vehiculos_asignados": [],
+            "vehiculos_rechazados": [],
+            "vehiculos_contactados": [],
+            "turnos_cargue": turnos_cargue,
+            "etapa_actual": "ASIGNACION_MANUAL",
+            "ciclo_actual": 1,
+            "alertas": [],
+            "fecha_cargue": oferta.get("info_cargue", {}).get("fechaInicio"),
+            "fecha_inicio_asignacion": datetime.now(timezone.utc),
+            "fecha_ultima_actualizacion": datetime.now(timezone.utc),
+            "porcentaje_completado": 0
+        }
+        
+        await db.asignaciones_vehiculos.insert_one(asignacion)
+        logger.info(f"Asignación creada para oferta {oferta.get('codigo_oferta')}")
+    
+    # Obtener turnos y lista actual de asignados
+    turnos_cargue = asignacion.get("turnos_cargue", [])
+    vehiculos_asignados = asignacion.get("vehiculos_asignados", [])
+    
+    # Generar nuevos vehículos simulados
+    nuevos_vehiculos = []
+    
+    for i in range(cantidad):
+        vehiculo_simulado = {
+            "vehiculo_id": f"TERCERO_{uuid.uuid4()}",
+            "placa": f"SIM{random.randint(100, 999)}",
+            "marca": "SIMULADO",
+            "linea": "Testing",
+            "tipo_propiedad": "tercero_externo",
+            "estado": "asignado",
+            "distancia_km": round(random.uniform(5, 18), 2),
+            "tiempo_espera_horas": 0,
+            "etapa": "ASIGNACION_MANUAL",
+            "ciclo": 1,
+            "timestamp": datetime.now(timezone.utc)
+        }
+        
+        # Asignar turno de cargue
+        turnos_actualizados, numero_turno = asignar_vehiculo_a_turno(
+            turnos_cargue,
+            {"vehiculo_id": vehiculo_simulado["vehiculo_id"], "placa": vehiculo_simulado["placa"]}
+        )
+        turnos_cargue = turnos_actualizados
+        vehiculo_simulado["turno_cargue"] = numero_turno
+        
+        if numero_turno:
+            turno_info = next((t for t in turnos_cargue if t["numero_turno"] == numero_turno), None)
+            if turno_info:
+                vehiculo_simulado["hora_cargue"] = turno_info["hora_inicio"]
+        
+        nuevos_vehiculos.append(vehiculo_simulado)
+        vehiculos_asignados.append(vehiculo_simulado)
+    
+    # Actualizar asignación
+    await db.asignaciones_vehiculos.update_one(
+        {"id": asignacion["id"]},
+        {
+            "$set": {
+                "vehiculos_asignados": vehiculos_asignados,
+                "turnos_cargue": turnos_cargue,
+                "fecha_ultima_actualizacion": datetime.now(timezone.utc),
+                "porcentaje_completado": len(vehiculos_asignados) * 20  # Simulado
+            }
+        }
+    )
+    
+    # Registrar actividad
+    await registrar_actividad(
+        db=db,
+        usuario=user["email"],
+        accion="ASIGNACION_MANUAL",
+        modulo="OFERTAS",
+        registro_id=oferta_id,
+        tenant_id=user["tenant_id"],
+        ip=request.client.host if request.client else "unknown",
+        detalles={
+            "cantidad": cantidad,
+            "vehiculos_agregados": [v["placa"] for v in nuevos_vehiculos],
+            "total_asignados": len(vehiculos_asignados)
+        }
+    )
+    
+    return {
+        "success": True,
+        "oferta_id": oferta_id,
+        "cantidad_agregada": cantidad,
+        "vehiculos_agregados": [{"placa": v["placa"], "turno": v.get("turno_cargue")} for v in nuevos_vehiculos],
+        "total_asignados": len(vehiculos_asignados),
+        "mensaje": f"Se agregaron {cantidad} vehículo(s) simulado(s). Total: {len(vehiculos_asignados)}"
+    }
+
+
 @api_router.post("/ofertas/{oferta_id}/finalizar")
 async def finalizar_oferta(request: Request, oferta_id: str):
     """

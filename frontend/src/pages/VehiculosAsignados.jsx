@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileText, MapPin, Phone, Clock, Truck, AlertCircle, CheckCircle, ChevronRight } from 'lucide-react';
+import { ArrowLeft, FileText, MapPin, Phone, Clock, Truck, AlertCircle, CheckCircle, ChevronRight, Plus } from 'lucide-react';
 import '@/pages/Ofertas.css';
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -57,6 +57,32 @@ export default function VehiculosAsignados() {
     } catch (err) {
       console.error('Error al avanzar estado:', err);
       alert('❌ Error al actualizar el estado del vehículo');
+    } finally {
+      setAvanzandoEstado(null);
+    }
+  };
+
+  const simularAsignacion = async (cantidad = 1) => {
+    setAvanzandoEstado('simulando');
+    try {
+      const res = await fetch(`${API}/api/ofertas/${id}/simular-asignacion-progresiva`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ cantidad })
+      });
+      
+      if (res.ok) {
+        const result = await res.json();
+        await cargarVehiculosAsignados();
+        alert(`✅ ${result.mensaje || 'Vehículos agregados correctamente'}`);
+      } else {
+        const error = await res.json();
+        alert(`❌ Error: ${error.detail || 'No se pudo simular la asignación'}`);
+      }
+    } catch (err) {
+      console.error('Error al simular asignación:', err);
+      alert('❌ Error al simular la asignación');
     } finally {
       setAvanzandoEstado(null);
     }
@@ -164,15 +190,33 @@ export default function VehiculosAsignados() {
     return (
       <div className="ofertas-container">
         <div className="ofertas-header">
-          <button onClick={() => navigate('/ofertas')} className="btn-back">
-            <ArrowLeft size={20} />
-            Volver
+          <button onClick={() => navigate('/ofertas')} className="btn-back-detail">
+            <ArrowLeft size={18} />
+            Volver al listado
           </button>
           <h1>Vehículos Asignados</h1>
+          <button 
+            onClick={() => simularAsignacion(1)}
+            disabled={avanzandoEstado === 'simulando'}
+            className="btn-icon-action btn-icon-asignar"
+            style={{ 
+              padding: '8px 16px',
+              gap: '8px',
+              fontSize: '14px',
+              fontWeight: '600'
+            }}
+            title="Simular asignación de 1 vehículo"
+          >
+            <Plus size={18} />
+            Simular Asignación
+          </button>
         </div>
         <div style={{ textAlign: 'center', padding: '40px' }}>
           <AlertCircle size={48} style={{ color: '#888', margin: '0 auto 16px' }} />
           <p>No hay vehículos asignados a esta oferta.</p>
+          <p style={{ fontSize: '14px', color: '#64748b', marginTop: '12px' }}>
+            Usa el botón "Simular Asignación" para agregar vehículos progresivamente.
+          </p>
         </div>
       </div>
     );
@@ -186,6 +230,21 @@ export default function VehiculosAsignados() {
           Volver al listado
         </button>
         <h1>Vehículos Asignados</h1>
+        <button 
+          onClick={() => simularAsignacion(1)}
+          disabled={avanzandoEstado === 'simulando'}
+          className="btn-icon-action btn-icon-asignar"
+          style={{ 
+            padding: '8px 16px',
+            gap: '8px',
+            fontSize: '14px',
+            fontWeight: '600'
+          }}
+          title="Simular asignación de 1 vehículo"
+        >
+          <Plus size={18} />
+          Simular Asignación
+        </button>
       </div>
 
       {/* Resumen mejorado con métricas separadas */}
