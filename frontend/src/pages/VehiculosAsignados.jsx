@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText, MapPin, Phone, Clock, Truck, AlertCircle, CheckCircle } from 'lucide-react';
+import '@/pages/Ofertas.css';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -79,6 +80,17 @@ export default function VehiculosAsignados() {
     }
   };
 
+  const getEstadoClass = (estado) => {
+    const map = {
+      'asignado': 'asignado',
+      'en_cargue': 'en-proceso',
+      'en_ruta': 'en-ruta',
+      'en_descargue': 'en-proceso',
+      'finalizado': 'finalizada'
+    };
+    return map[estado?.toLowerCase()] || 'sin-asignar';
+  };
+
   const getEstadoLabel = (estado) => {
     const labels = {
       'asignado': 'Asignado',
@@ -141,52 +153,54 @@ export default function VehiculosAsignados() {
   return (
     <div className="ofertas-container">
       <div className="ofertas-header">
-        <button onClick={() => navigate('/ofertas')} className="btn-back">
-          <ArrowLeft size={20} />
-          Volver
+        <button onClick={() => navigate('/ofertas')} className="btn-back-detail">
+          <ArrowLeft size={18} />
+          Volver al listado
         </button>
         <h1>Vehículos Asignados</h1>
       </div>
 
-      {/* Resumen */}
-      <div style={{ 
-        background: '#f8fafc', 
-        padding: '16px 20px', 
-        borderRadius: '8px', 
-        marginBottom: '24px',
-        border: '1px solid #e2e8f0'
-      }}>
-        <div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
-          <div>
-            <span style={{ fontSize: '14px', color: '#64748b' }}>Oferta: </span>
-            <strong>{datos.oferta_codigo}</strong>
+      {/* Resumen mejorado */}
+      <div className="oferta-section" style={{ marginBottom: '24px' }}>
+        <div className="oferta-section-grid cols-4">
+          <div className="info-item">
+            <div className="info-label">Código de Oferta</div>
+            <div className="info-value" style={{ fontWeight: '700', fontSize: '16px' }}>
+              {datos.oferta_codigo}
+            </div>
           </div>
-          <div>
-            <span style={{ fontSize: '14px', color: '#64748b' }}>Vehículos asignados: </span>
-            <strong>{datos.resumen.total_asignados}</strong>
+          <div className="info-item">
+            <div className="info-label">Vehículos Asignados</div>
+            <div className="info-value" style={{ fontWeight: '700', fontSize: '16px', color: '#059669' }}>
+              {datos.resumen.total_asignados}
+            </div>
           </div>
-          <div>
-            <span style={{ fontSize: '14px', color: '#64748b' }}>Turnos: </span>
-            <strong>{datos.resumen.total_turnos}</strong>
+          <div className="info-item">
+            <div className="info-label">Turnos Programados</div>
+            <div className="info-value" style={{ fontWeight: '700', fontSize: '16px' }}>
+              {datos.resumen.total_turnos}
+            </div>
           </div>
-          <div>
-            <span style={{ fontSize: '14px', color: '#64748b' }}>Completitud: </span>
-            <strong>{datos.resumen.porcentaje_completado.toFixed(1)}%</strong>
+          <div className="info-item">
+            <div className="info-label">Completitud</div>
+            <div className="info-value" style={{ fontWeight: '700', fontSize: '16px', color: '#2563eb' }}>
+              {datos.resumen.porcentaje_completado.toFixed(1)}%
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Tabla de vehículos */}
-      <div className="ofertas-table-container">
-        <table className="ofertas-table">
+      {/* Tabla mejorada */}
+      <div className="data-table-container">
+        <table className="data-table">
           <thead>
             <tr>
-              <th>Placa</th>
-              <th>Conductor</th>
-              <th>Tipo</th>
-              <th>Estado</th>
-              <th>Turno de Cargue</th>
-              <th>Acciones</th>
+              <th style={{ width: '18%' }}>Placa</th>
+              <th style={{ width: '18%' }}>Conductor</th>
+              <th style={{ width: '14%' }}>Tipo</th>
+              <th style={{ width: '16%' }}>Estado</th>
+              <th style={{ width: '18%' }}>Turno de Cargue</th>
+              <th style={{ width: '16%', textAlign: 'center' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -195,87 +209,130 @@ export default function VehiculosAsignados() {
               
               return (
                 <tr key={idx}>
+                  {/* Placa */}
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Truck size={18} style={{ color: '#64748b' }} />
-                      <strong>{vehiculo.placa}</strong>
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                      {vehiculo.marca} {vehiculo.linea}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Truck size={20} style={{ color: '#64748b', flexShrink: 0 }} />
+                      <div>
+                        <div style={{ 
+                          fontWeight: '700', 
+                          fontSize: '15px', 
+                          color: '#1a202c',
+                          marginBottom: '2px'
+                        }}>
+                          {vehiculo.placa}
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#64748b' }}>
+                          {vehiculo.marca} {vehiculo.linea}
+                        </div>
+                      </div>
                     </div>
                   </td>
                   
+                  {/* Conductor */}
                   <td>
-                    <div>{vehiculo.conductor?.nombre || 'N/A'}</div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                    <div style={{ fontWeight: '600', fontSize: '14px', color: '#374151', marginBottom: '2px' }}>
+                      {vehiculo.conductor?.nombre || 'N/A'}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#9ca3af' }}>
                       {vehiculo.conductor?.telefono || ''}
                     </div>
                   </td>
                   
+                  {/* Tipo */}
                   <td>
-                    <span className={`badge ${getBadgeColor(vehiculo.tipo_propiedad)}`}>
+                    <span className={`badge ${getBadgeColor(vehiculo.tipo_propiedad)}`} style={{ 
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      fontWeight: '600'
+                    }}>
                       {getTipoLabel(vehiculo.tipo_propiedad)}
                     </span>
                   </td>
                   
+                  {/* Estado con semáforo */}
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       {semaforo && (
                         <div 
                           style={{
-                            width: '12px',
-                            height: '12px',
+                            width: '10px',
+                            height: '10px',
                             borderRadius: '50%',
                             backgroundColor: semaforo.color === 'green' ? '#22c55e' : '#ef4444',
-                            boxShadow: `0 0 8px ${semaforo.color === 'green' ? '#22c55e' : '#ef4444'}`
+                            flexShrink: 0,
+                            boxShadow: `0 0 8px ${semaforo.color === 'green' ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.5)'}`
                           }}
                           title={`${semaforo.texto}: ${semaforo.tiempoTranscurrido}/${semaforo.tiempoEstimado} mins`}
                         />
                       )}
-                      <span>{getEstadoLabel(vehiculo.estado)}</span>
-                    </div>
-                    {semaforo && (
-                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-                        {semaforo.tiempoTranscurrido}/{semaforo.tiempoEstimado} mins
+                      <div>
+                        <span className={`estado-badge ${getEstadoClass(vehiculo.estado)}`}>
+                          {getEstadoLabel(vehiculo.estado)}
+                        </span>
+                        {semaforo && (
+                          <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>
+                            {semaforo.tiempoTranscurrido}/{semaforo.tiempoEstimado} mins
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </td>
                   
+                  {/* Turno */}
                   <td>
                     {vehiculo.turno?.numero ? (
                       <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Clock size={14} style={{ color: '#64748b' }} />
-                          <strong>Turno {vehiculo.turno.numero}</strong>
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '6px',
+                          marginBottom: '4px'
+                        }}>
+                          <Clock size={16} style={{ color: '#64748b' }} />
+                          <strong style={{ fontSize: '14px', color: '#374151' }}>
+                            Turno {vehiculo.turno.numero}
+                          </strong>
                         </div>
-                        <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                        <div style={{ 
+                          fontSize: '13px', 
+                          color: '#64748b',
+                          paddingLeft: '22px',
+                          fontFamily: 'monospace'
+                        }}>
                           {formatearHora(vehiculo.turno.hora_inicio)}
                         </div>
                       </div>
                     ) : (
-                      <span style={{ color: '#94a3b8' }}>Sin turno</span>
+                      <span style={{ color: '#9ca3af', fontSize: '13px' }}>Sin turno asignado</span>
                     )}
                   </td>
                   
+                  {/* Acciones */}
                   <td>
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
                       <button
                         onClick={() => setModalDocumentos(vehiculo)}
-                        className="btn-icon"
+                        className="btn-icon-action btn-icon-ver"
                         title="Ver documentación"
                       >
                         <FileText size={16} />
                       </button>
                       <button
                         onClick={() => setModalGPS(vehiculo)}
-                        className="btn-icon"
+                        className="btn-icon-action"
+                        style={{ 
+                          background: '#fef3c7',
+                          color: '#b45309',
+                          borderColor: '#fcd34d'
+                        }}
                         title="Ver tracking GPS"
                       >
                         <MapPin size={16} />
                       </button>
                       <button
                         onClick={() => setModalContacto(vehiculo)}
-                        className="btn-icon"
+                        className="btn-icon-action btn-icon-asignar"
                         title="Ver contacto"
                       >
                         <Phone size={16} />
@@ -289,42 +346,85 @@ export default function VehiculosAsignados() {
         </table>
       </div>
 
-      {/* Modal Documentos */}
+      {/* Modales con diseño mejorado */}
       {modalDocumentos && (
         <div className="modal-overlay" onClick={() => setModalDocumentos(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
             <div className="modal-header">
-              <h2>Documentación - {modalDocumentos.placa}</h2>
+              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700' }}>
+                Documentación - {modalDocumentos.placa}
+              </h2>
               <button onClick={() => setModalDocumentos(null)} className="modal-close">×</button>
             </div>
             <div className="modal-body">
-              <p style={{ color: '#64748b', marginBottom: '20px' }}>
-                <em>Documentos simulados - Integración pendiente</em>
-              </p>
+              <div style={{ 
+                background: '#eff6ff', 
+                border: '1px solid #bfdbfe',
+                borderRadius: '8px', 
+                padding: '12px 16px',
+                marginBottom: '20px',
+                fontSize: '13px',
+                color: '#1e40af'
+              }}>
+                <strong>Nota:</strong> Documentos simulados - Integración pendiente
+              </div>
+              
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div className="doc-item">
-                  <FileText size={20} style={{ color: '#3b82f6' }} />
-                  <div>
-                    <div><strong>Licencia de Conducción</strong></div>
-                    <div style={{ fontSize: '13px', color: '#64748b' }}>Vigente hasta: 2026-12-31</div>
+                <div className="oferta-section" style={{ 
+                  margin: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  padding: '16px'
+                }}>
+                  <FileText size={24} style={{ color: '#2563eb', flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: '600', fontSize: '14px', color: '#374151', marginBottom: '2px' }}>
+                      Licencia de Conducción
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>
+                      Vigente hasta: 2026-12-31
+                    </div>
                   </div>
-                  <CheckCircle size={20} style={{ color: '#22c55e' }} />
+                  <CheckCircle size={24} style={{ color: '#22c55e' }} />
                 </div>
-                <div className="doc-item">
-                  <FileText size={20} style={{ color: '#3b82f6' }} />
-                  <div>
-                    <div><strong>SOAT</strong></div>
-                    <div style={{ fontSize: '13px', color: '#64748b' }}>Vigente hasta: 2026-06-30</div>
+                
+                <div className="oferta-section" style={{ 
+                  margin: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  padding: '16px'
+                }}>
+                  <FileText size={24} style={{ color: '#2563eb', flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: '600', fontSize: '14px', color: '#374151', marginBottom: '2px' }}>
+                      SOAT
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>
+                      Vigente hasta: 2026-06-30
+                    </div>
                   </div>
-                  <CheckCircle size={20} style={{ color: '#22c55e' }} />
+                  <CheckCircle size={24} style={{ color: '#22c55e' }} />
                 </div>
-                <div className="doc-item">
-                  <FileText size={20} style={{ color: '#3b82f6' }} />
-                  <div>
-                    <div><strong>Revisión Técnico-Mecánica</strong></div>
-                    <div style={{ fontSize: '13px', color: '#64748b' }}>Vigente hasta: 2026-08-15</div>
+                
+                <div className="oferta-section" style={{ 
+                  margin: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  padding: '16px'
+                }}>
+                  <FileText size={24} style={{ color: '#2563eb', flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: '600', fontSize: '14px', color: '#374151', marginBottom: '2px' }}>
+                      Revisión Técnico-Mecánica
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>
+                      Vigente hasta: 2026-08-15
+                    </div>
                   </div>
-                  <CheckCircle size={20} style={{ color: '#22c55e' }} />
+                  <CheckCircle size={24} style={{ color: '#22c55e' }} />
                 </div>
               </div>
             </div>
@@ -335,48 +435,67 @@ export default function VehiculosAsignados() {
       {/* Modal GPS */}
       {modalGPS && (
         <div className="modal-overlay" onClick={() => setModalGPS(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
             <div className="modal-header">
-              <h2>Tracking GPS - {modalGPS.placa}</h2>
+              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700' }}>
+                Tracking GPS - {modalGPS.placa}
+              </h2>
               <button onClick={() => setModalGPS(null)} className="modal-close">×</button>
             </div>
             <div className="modal-body">
-              <p style={{ color: '#64748b', marginBottom: '20px' }}>
-                <em>Tracking GPS simulado - Integración pendiente</em>
-              </p>
-              
               <div style={{ 
-                background: '#f1f5f9', 
+                background: '#eff6ff', 
+                border: '1px solid #bfdbfe',
                 borderRadius: '8px', 
-                padding: '20px',
-                marginBottom: '16px'
+                padding: '12px 16px',
+                marginBottom: '20px',
+                fontSize: '13px',
+                color: '#1e40af'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                  <MapPin size={24} style={{ color: '#3b82f6' }} />
-                  <div>
-                    <div><strong>Ubicación actual</strong></div>
-                    <div style={{ fontSize: '13px', color: '#64748b' }}>
+                <strong>Nota:</strong> Tracking GPS simulado - Integración pendiente
+              </div>
+              
+              <div className="oferta-section" style={{ margin: '0 0 16px 0' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', marginBottom: '16px' }}>
+                  <MapPin size={28} style={{ color: '#2563eb', flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: '700', fontSize: '15px', color: '#374151', marginBottom: '6px' }}>
+                      Ubicación actual
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>
                       Lat: 4.{Math.floor(Math.random() * 900000)}, Lng: -74.{Math.floor(Math.random() * 900000)}
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>
+                      Última actualización: {new Date().toLocaleTimeString('es-CO')}
                     </div>
                   </div>
                 </div>
-                <div style={{ fontSize: '14px', color: '#475569' }}>
-                  Estado: <strong>{getEstadoLabel(modalGPS.estado)}</strong>
-                </div>
-                <div style={{ fontSize: '13px', color: '#64748b', marginTop: '8px' }}>
-                  Última actualización: {new Date().toLocaleTimeString('es-CO')}
+                
+                <div className="oferta-section-grid cols-2" style={{ paddingTop: '12px', borderTop: '1px solid #e5e7eb' }}>
+                  <div className="info-item">
+                    <div className="info-label">Estado Actual</div>
+                    <div className="info-value">
+                      <span className={`estado-badge ${getEstadoClass(modalGPS.estado)}`}>
+                        {getEstadoLabel(modalGPS.estado)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="info-item">
+                    <div className="info-label">Velocidad</div>
+                    <div className="info-value">{Math.floor(Math.random() * 60)} km/h</div>
+                  </div>
                 </div>
               </div>
 
               <div style={{ 
-                background: '#e0f2fe', 
-                border: '1px solid #bae6fd',
-                borderRadius: '6px', 
-                padding: '12px',
+                background: '#fef3c7', 
+                border: '1px solid #fde68a',
+                borderRadius: '8px', 
+                padding: '12px 16px',
                 fontSize: '13px',
-                color: '#0c4a6e'
+                color: '#92400e'
               }}>
-                <strong>Nota:</strong> El mapa interactivo con tracking en tiempo real se habilitará próximamente.
+                <strong>Próximamente:</strong> Mapa interactivo con tracking en tiempo real
               </div>
             </div>
           </div>
@@ -386,42 +505,52 @@ export default function VehiculosAsignados() {
       {/* Modal Contacto */}
       {modalContacto && (
         <div className="modal-overlay" onClick={() => setModalContacto(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
             <div className="modal-header">
-              <h2>Datos de Contacto - {modalContacto.placa}</h2>
+              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700' }}>
+                Datos de Contacto - {modalContacto.placa}
+              </h2>
               <button onClick={() => setModalContacto(null)} className="modal-close">×</button>
             </div>
             <div className="modal-body">
-              <div style={{ marginBottom: '24px' }}>
-                <h3 style={{ fontSize: '16px', marginBottom: '12px', color: '#1e293b' }}>
+              {/* Conductor */}
+              <div className="oferta-section" style={{ marginBottom: '16px' }}>
+                <div className="oferta-section-title" style={{ marginBottom: '16px' }}>
                   👤 Conductor
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '8px' }}>
-                  <div>
-                    <strong>Nombre:</strong> {modalContacto.conductor?.nombre || 'N/A'}
+                </div>
+                <div className="oferta-section-grid cols-2">
+                  <div className="info-item">
+                    <div className="info-label">Nombre Completo</div>
+                    <div className="info-value">{modalContacto.conductor?.nombre || 'N/A'}</div>
                   </div>
-                  <div>
-                    <strong>Teléfono:</strong> {modalContacto.conductor?.telefono || 'N/A'}
+                  <div className="info-item">
+                    <div className="info-label">Teléfono</div>
+                    <div className="info-value">{modalContacto.conductor?.telefono || 'N/A'}</div>
                   </div>
-                  <div>
-                    <strong>Email:</strong> {modalContacto.conductor?.email || 'N/A'}
+                  <div className="info-item" style={{ gridColumn: 'span 2' }}>
+                    <div className="info-label">Email</div>
+                    <div className="info-value">{modalContacto.conductor?.email || 'N/A'}</div>
                   </div>
                 </div>
               </div>
 
-              <div>
-                <h3 style={{ fontSize: '16px', marginBottom: '12px', color: '#1e293b' }}>
+              {/* Propietario */}
+              <div className="oferta-section" style={{ margin: 0 }}>
+                <div className="oferta-section-title" style={{ marginBottom: '16px' }}>
                   🏢 Propietario
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '8px' }}>
-                  <div>
-                    <strong>Nombre/Empresa:</strong> {modalContacto.propietario?.nombre || 'N/A'}
+                </div>
+                <div className="oferta-section-grid cols-2">
+                  <div className="info-item">
+                    <div className="info-label">Nombre / Empresa</div>
+                    <div className="info-value">{modalContacto.propietario?.nombre || 'N/A'}</div>
                   </div>
-                  <div>
-                    <strong>Teléfono:</strong> {modalContacto.propietario?.telefono || 'N/A'}
+                  <div className="info-item">
+                    <div className="info-label">Teléfono</div>
+                    <div className="info-value">{modalContacto.propietario?.telefono || 'N/A'}</div>
                   </div>
-                  <div>
-                    <strong>Email:</strong> {modalContacto.propietario?.email || 'N/A'}
+                  <div className="info-item" style={{ gridColumn: 'span 2' }}>
+                    <div className="info-label">Email</div>
+                    <div className="info-value">{modalContacto.propietario?.email || 'N/A'}</div>
                   </div>
                 </div>
               </div>
