@@ -179,6 +179,393 @@ Gestión completa de vehículos y remolques con las siguientes características:
 
 ---
 
+## Modo de Operación y Pruebas
+
+### Flujo Operativo Real del Sistema
+
+El sistema CTCARGA sigue un flujo de trabajo lógico desde la creación de una oferta hasta la finalización del servicio. Este flujo está diseñado para reflejar la operación real de una empresa de transporte de carga.
+
+#### 1️⃣ Creación de Oferta
+
+**Ubicación:** Módulo "Ofertas" → Botón "Nueva Oferta"
+
+- Wizard de 4 pasos:
+  1. **Paso 1 - Datos de carga:** Tipo, peso, volumen, requisitos especiales
+  2. **Paso 2 - Remitente y Destinatario:** Direcciones de cargue y descargue, contactos
+  3. **Paso 3 - Configuración de vehículos:** Tipo, configuración, carrocería requerida
+  4. **Paso 4 - Programación:** Fecha/hora inicio, tiempo estimado cargue, sitios disponibles
+- La oferta se crea en estado **"SIN ASIGNAR"**
+- El sistema calcula automáticamente:
+  - Turnos de cargue (basado en hora inicio + tiempo estimado + holgura)
+  - Capacidad por turno (según sitios de cargue disponibles)
+
+#### 2️⃣ Publicación de Oferta
+
+**Ubicación:** Tabla de ofertas → Botón "Publicar oferta"
+
+Al publicar, el sistema:
+- Cambia el estado a **"EN PROCESO DE ASIGNACIÓN"**
+- Inicia el proceso de asignación automática de vehículos (si `ENABLE_SIMULATION=false`)
+- Genera estructura de asignación en colección `asignaciones_vehiculos`
+- Registra actividad en logs de auditoría
+
+**Importante:** Una vez publicada, la oferta NO puede volver a estado "SIN ASIGNAR"
+
+#### 3️⃣ Asignación de Vehículos
+
+El sistema soporta **dos modos de asignación**:
+
+##### A. Asignación Automática (Producción)
+**Configuración:** `ENABLE_SIMULATION=false` en `/backend/.env`
+
+- El sistema busca vehículos disponibles siguiendo prioridad:
+  1. **Flota propia** (menor costo)
+  2. **Terceros vinculados** (costo medio)
+  3. **Terceros externos** (mayor costo, contacto manual)
+- Valida requisitos:
+  - Configuración de vehículo (sencillo, tractocamión, etc.)
+  - Tipo de vehículo (rígido, articulado)
+  - Carrocería compatible
+  - Capacidad de carga
+  - Proximidad (< 20km simulado)
+- Asigna turnos de cargue automáticamente según orden de aceptación
+- Sistema de reintentos (hasta 3 ciclos si no hay suficientes vehículos)
+
+##### B. Asignación Manual Progresiva (Pruebas)
+**Configuración:** `ENABLE_SIMULATION=true` en `/backend/.env`
+
+- Permite agregar vehículos simulados uno por uno
+- Ideal para pruebas funcionales sin necesidad de vehículos reales registrados
+- Los vehículos simulados tienen:
+  - Placa generada (formato: SIM + 3 dígitos)
+  - Marca "SIMULADO" (identificable con badge amarillo)
+  - Conductor simulado con datos ficticios
+  - GPS simulado con coordenadas aleatorias
+  - Documentación simulada (licencia, SOAT, RTM)
+
+#### 4️⃣ Visualización de Vehículos Asignados
+
+**Ubicación:** Tabla de ofertas → Botón "Vehículos asignados" (🚛)
+
+**Disponible solo para ofertas con estado:**
+- ✅ "EN PROCESO DE ASIGNACIÓN"
+- ✅ "PUBLICADA"
+- ✅ "FINALIZADA"
+- ❌ "SIN ASIGNAR" (botón oculto)
+
+**Vista de Vehículos Asignados incluye:**
+
+| Columna | Descripción |
+|---------|-------------|
+| **Placa** | Identificación del vehículo + badge "SIMULADO" si aplica |
+| **Conductor** | Nombre y teléfono del conductor asignado |
+| **Tipo** | Badge de color según tipo de propiedad (Flota propia / Tercero vinculado / Tercero) |
+| **Estado del proceso** | Estado actual + semáforo de tiempo (verde/rojo) |
+| **Turno de Cargue** | Número de turno + hora programada |
+| **Acciones** | Ver documentación / GPS tracking / Contacto |
+| **Avanzar Estado** | Botón para simular avance en el flujo operativo |
+
+**Métricas del resumen:**
+- Total vehículos asignados (desglose: reales + simulados)
+- Turnos programados
+- % Completitud de asignación
+
+#### 5️⃣ Simulación Progresiva de Asignación
+
+**Ubicación:** Vista "Vehículos Asignados" → Botón "+" (debajo de la tabla)
+
+**Solo visible cuando:** `ENABLE_SIMULATION=true`
+
+**Funcionalidad:**
+- Agrega 1 vehículo simulado por click
+- Límite: cantidad de vehículos requeridos en la oferta
+- Asigna turno de cargue automáticamente al vehículo agregado
+- La **tabla se actualiza instantáneamente** sin necesidad de refresh manual (F5)
+
+**Flujo técnico:**
+```
+Click botón "Simular Asignación"
+   → POST /api/ofertas/{id}/simular-asignacion-progresiva
+   → Backend crea vehículo simulado + asigna turno
+   → Frontend recibe respuesta
+   → setDatos() con nueva referencia
+   → React detecta cambio y re-renderiza tabla
+   → Usuario ve nuevo vehículo en la tabla (instantáneo)
+```
+
+**Persistencia:**
+- Los datos simulados NO se eliminan entre recargas
+- Quedan guardados en MongoDB para seguimiento de pruebas
+- Permiten simular operación real completa
+
+#### 6️⃣ Avance de Estados por Vehículo
+
+**Ubicación:** Vista "Vehículos Asignados" → Columna "Avanzar Estado" → Botón verde (►)
+
+**Flujo de estados:**
+```
+ASIGNADO → EN_CARGUE → EN_RUTA → EN_DESCARGUE → FINALIZADO
+```
+
+**Características:**
+- ✅ Avance **individual por vehículo** (no grupal)
+- ✅ No permite saltar estados ni retroceder
+- ✅ Actualiza `fecha_cambio_estado` para cálculo de semáforo
+- ✅ Botón deshabilitado cuando el vehículo llega a "FINALIZADO"
+- ✅ Feedback visual durante el avance (loading state)
+- ✅ **UI se actualiza automáticamente** sin refresh manual
+- ✅ Registro completo en `activity_logs` para auditoría
+
+**Semáforo de tiempo:**
+- 🟢 **Verde:** Dentro del tiempo estimado para ese estado
+- 🔴 **Rojo:** Fuera del tiempo estimado (posible retraso)
+- Cálculo: `tiempo_transcurrido <= tiempo_estimado` (en minutos)
+- Solo visible para estados: EN_CARGUE, EN_RUTA, EN_DESCARGUE
+
+**Tiempos estimados por estado (configurables):**
+- EN_CARGUE: 60 minutos (desde el campo `tiempo_estimado_cargue` de la oferta)
+- EN_RUTA: 180 minutos (tiempo estimado de tránsito)
+- EN_DESCARGUE: 45 minutos (tiempo estimado de descarga)
+
+#### 7️⃣ Finalización del Servicio
+
+**Opciones de finalización:**
+
+1. **Finalización individual:** Cada vehículo llega a estado "FINALIZADO"
+2. **Finalización de oferta completa:** Botón "Finalizar oferta" en tabla de ofertas
+   - Cambia estado de la oferta a "FINALIZADA"
+   - Libera vehículos (estado → "disponible")
+   - Registra `tiempo_disponible_desde` para próximas asignaciones
+   - Cierra el ciclo completo
+
+---
+
+### Diferencia entre Modo Producción y Modo Pruebas
+
+#### 🔵 Modo Producción (`ENABLE_SIMULATION=false`)
+
+**Características:**
+- Asignación automática real basada en vehículos registrados en la base de datos
+- Algoritmo de prioridad por costo (flota propia → vinculados → externos)
+- Validaciones estrictas de proximidad y capacidad
+- Notificaciones reales a conductores (futuro)
+- Integración GPS real (futuro)
+
+**Configuración:**
+```env
+# /backend/.env
+ENABLE_SIMULATION=false
+```
+
+**Uso recomendado:**
+- Ambiente de producción
+- Operación real con vehículos físicos
+- Datos de conductores y propietarios reales
+
+#### 🟡 Modo Pruebas (`ENABLE_SIMULATION=true`)
+
+**Características:**
+- Asignación manual progresiva mediante botón "Simular Asignación"
+- Vehículos simulados con datos ficticios completos
+- GPS simulado (coordenadas aleatorias)
+- Documentación simulada (licencia, SOAT, RTM vigentes)
+- Conductores simulados con nombres y teléfonos ficticios
+- Permite probar flujo completo sin necesidad de datos reales
+
+**Configuración:**
+```env
+# /backend/.env
+ENABLE_SIMULATION=true
+```
+
+**Uso recomendado:**
+- Ambiente de desarrollo
+- Pruebas funcionales y QA
+- Demostraciones del sistema
+- Training de usuarios
+
+**Identificación visual:**
+- Badge amarillo "SIMULADO" en la columna Placa
+- Métricas separadas: "X reales + Y simulados"
+- Notas azules en modales: "Datos simulados - Integración pendiente"
+
+---
+
+### Datos Simulados en Modo Pruebas
+
+Cuando `ENABLE_SIMULATION=true`, el sistema genera automáticamente:
+
+#### Vehículos Simulados
+```python
+{
+  "vehiculo_id": "TERCERO_<uuid>",
+  "placa": "SIM479",  # Generada aleatoriamente
+  "marca": "SIMULADO",
+  "linea": "MODELO-X",
+  "tipo_propiedad": "tercero_externo",
+  "configuracion": "<copiada de la oferta>",
+  "tipo_vehiculo": "<copiado de la oferta>",
+  "carroceria": "<copiada de la oferta>",
+  "estado": "asignado",
+  "turno_cargue": 1,  # Asignado automáticamente
+  "hora_cargue": "2026-04-17T08:00:00Z"
+}
+```
+
+#### Conductores Simulados
+```python
+{
+  "nombre": "Conductor Simulado",
+  "telefono": "+57 300 123 4567",
+  "email": "conductor.sim479@example.com"
+}
+```
+
+#### GPS Tracking Simulado
+```javascript
+{
+  "latitud": 4.XXXXXX,   // Coordenadas aleatorias Colombia
+  "longitud": -74.XXXXXX,
+  "velocidad": "XX km/h",
+  "ultima_actualizacion": "<timestamp actual>"
+}
+```
+
+#### Documentación Simulada
+- ✅ Licencia de Conducción (vigente hasta 2026-12-31)
+- ✅ SOAT (vigente hasta 2026-06-30)
+- ✅ Revisión Técnico-Mecánica (vigente hasta 2026-08-15)
+
+**Nota:** Estos datos son **persistentes** y quedan guardados en MongoDB. Esto permite:
+- Continuar pruebas entre sesiones
+- Validar lógica de estados completa
+- Simular operación real de principio a fin
+
+---
+
+### Comportamiento Importante de la UI
+
+#### ✅ Actualización Automática Sin Refresh
+
+**Problema resuelto:** Anteriormente, después de "Simular Asignación" o "Avanzar Estado", la tabla no se actualizaba y requería F5 manual.
+
+**Solución implementada:**
+- Forzado de nuevas referencias de estado en React mediante spread operator
+- Contador `refreshKey` interno para garantizar re-render
+- Clave única en el map (`vehiculo.vehiculo_id` en lugar de índice)
+
+**Resultado:**
+```
+Usuario hace click → Backend actualiza DB → Frontend recarga datos
+→ setDatos() con nueva referencia → React detecta cambio
+→ Tabla se actualiza INSTANTÁNEAMENTE ✅
+```
+
+**Sin necesidad de:**
+- ❌ Presionar F5
+- ❌ Hacer click en "Volver" y regresar
+- ❌ Cerrar y reabrir la vista
+
+#### ✅ Asignación Progresiva (No Todo al Inicio)
+
+**Comportamiento:**
+- Una oferta puede iniciar con **0 vehículos asignados**
+- Los vehículos se agregan progresivamente (en producción: por aceptación gradual)
+- En pruebas: se agregan manualmente con botón "Simular Asignación"
+- La asignación puede completarse al 20%, 40%, 60%, 80%, 100%
+- El sistema permite operación parcial mientras se completa la asignación
+
+**Ventajas:**
+- Refleja operación real (vehículos no siempre están listos al mismo tiempo)
+- Permite publicar oferta y comenzar operación sin esperar asignación 100%
+- Facilita pruebas graduales del flujo completo
+
+#### ✅ Persistencia Total de Datos
+
+**Comportamiento:**
+- Los datos de prueba NO se eliminan entre sesiones
+- Vehículos simulados quedan guardados en MongoDB
+- Estados de vehículos se mantienen entre recargas
+- Permite seguimiento completo del flujo operativo
+
+**Ventajas:**
+- Continuidad en pruebas funcionales
+- Trazabilidad completa en `activity_logs`
+- Validación de lógica de estados a lo largo del tiempo
+
+---
+
+### Variables de Entorno Clave
+
+#### Backend (`/backend/.env`)
+
+```env
+# Control de modo de simulación
+ENABLE_SIMULATION=true          # true = Modo Pruebas | false = Modo Producción
+
+# Conexión a base de datos
+MONGO_URL=mongodb://localhost:27017
+DB_NAME=ctcarga_db
+
+# Autenticación
+JWT_SECRET=<secreto_seguro>
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_HOURS=12
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# Admin semilla (creado automáticamente)
+ADMIN_EMAIL=admin@ctcarga.com
+ADMIN_PASSWORD=admin123
+ADMIN_NAME=Administrador
+```
+
+#### Frontend (`/frontend/.env`)
+
+```env
+# URL del backend (Kubernetes Ingress en producción)
+REACT_APP_BACKEND_URL=https://<dominio-produccion>
+```
+
+**Importante:** En desarrollo local, el frontend usa `localhost:3000` y el backend `localhost:8001`, pero en producción todo pasa por el ingress de Kubernetes con prefijo `/api` para el backend.
+
+---
+
+### Casos de Uso Comunes
+
+#### Caso 1: Prueba de Flujo Completo (Modo Simulación)
+
+1. Crear nueva oferta con 5 vehículos requeridos
+2. Publicar oferta (estado → "EN PROCESO DE ASIGNACIÓN")
+3. Ir a "Vehículos asignados" (inicialmente vacío)
+4. Click en "Simular Asignación" 5 veces (agregar vehículos progresivamente)
+5. Verificar que cada vehículo aparece con turno asignado
+6. Avanzar estado del primer vehículo: ASIGNADO → EN_CARGUE
+7. Verificar semáforo verde (dentro de tiempo estimado)
+8. Continuar avanzando estados: EN_RUTA → EN_DESCARGUE → FINALIZADO
+9. Repetir con otros vehículos
+10. Finalizar oferta completa
+
+**Validaciones:**
+- ✅ UI se actualiza sin refresh en cada paso
+- ✅ Semáforos funcionan correctamente
+- ✅ Turnos se asignan secuencialmente
+- ✅ Estados no permiten retrocesos ni saltos
+
+#### Caso 2: Operación Real (Modo Producción)
+
+1. Registrar vehículos reales en módulo "Flota"
+2. Asignar conductores y propietarios
+3. Configurar vehículos como "disponibles"
+4. Crear oferta con requisitos específicos
+5. Publicar oferta
+6. Sistema asigna automáticamente vehículos compatibles
+7. Conductores reciben notificación (futuro)
+8. Conductores aceptan/rechazan oferta
+9. Seguimiento GPS real durante el servicio
+10. Finalización con confirmación de entrega
+
+---
+
 ## Sistema de Auditoría (Activity Logs)
 
 ### Descripción
@@ -1237,16 +1624,83 @@ Variables de entorno:
 
 ## Próximos Desarrollos Sugeridos
 
-1. **Vista de Activity Logs**: Panel de administración para consultar logs
-2. **Exportación de Logs**: Funcionalidad para exportar a CSV/Excel
-3. **Alertas de Seguridad**: Notificaciones para acciones críticas
-4. **Dashboard de Analytics**: Gráficas de actividad del sistema
-5. **Política de Retención**: Limpieza automática de logs antiguos
-6. **App Móvil**: Integración con logs de actividad móvil
-7. **Facturación**: Flujo completo usando tipo_propiedad de vehículos
-8. **Gestión de Conductores**: Asignación de conductores a vehículos
-9. **Notificaciones Push**: Alertas para ofertas y asignaciones
-10. **Reportes Avanzados**: Generación de reportes regulatorios
+### Integraciones Reales Pendientes
+
+1. **GPS Tracking Real**
+   - Reemplazar GPS simulado con integración de proveedor (ej: Wialon, Traccar)
+   - Actualización de posición en tiempo real
+   - Mapa interactivo con ruta completa
+   - Alertas de geofencing
+
+2. **Documentación Digital Real**
+   - Integración con repositorio de documentos (AWS S3, Google Drive)
+   - Carga y validación de documentos físicos
+   - Verificación de vigencia automática
+   - Alertas de vencimiento
+
+3. **Notificaciones Push**
+   - Notificaciones a conductores (ofertas disponibles)
+   - SMS/WhatsApp para confirmaciones
+   - Email para resúmenes diarios
+   - Integración con Twilio/SendGrid
+
+4. **Gestión de Conductores**
+   - Registro completo de conductores independientes
+   - Asignación de conductor a vehículo
+   - Validación de licencia y documentación
+   - Historial de servicios
+
+### Mejoras Operativas
+
+5. **App Móvil para Conductores**
+   - Visualización de ofertas asignadas
+   - Confirmación de aceptación/rechazo
+   - Actualización manual de estado
+   - Navegación GPS integrada
+
+6. **Dashboard de Analytics**
+   - Gráficas de rendimiento por vehículo
+   - Tiempos promedio por etapa (cargue, ruta, descargue)
+   - Identificación de cuellos de botella
+   - KPIs operativos
+
+7. **Facturación Automática**
+   - Cálculo de tarifas según tipo_propiedad
+   - Generación de facturas PDF
+   - Integración contable
+   - Historial de pagos
+
+8. **Optimización de Rutas**
+   - Algoritmo de asignación por distancia real (no simulada)
+   - Consideración de tráfico en tiempo real
+   - Sugerencia de rutas óptimas
+   - Cálculo de costos de combustible
+
+### Seguridad y Auditoría
+
+9. **Vista de Activity Logs en UI**
+   - Panel de administración para consultar logs
+   - Filtros avanzados por usuario, módulo, fecha
+   - Exportación a CSV/Excel
+   - Alertas de seguridad para acciones críticas
+
+10. **Política de Retención de Datos**
+    - Limpieza automática de logs antiguos (> 1 año)
+    - Archivado de ofertas finalizadas
+    - GDPR compliance para datos personales
+
+### Reportes y Cumplimiento
+
+11. **Reportes Regulatorios**
+    - Reportes para Ministerio de Transporte
+    - Cumplimiento normativo (Ley 1702, Decreto 1079)
+    - Auditorías de seguridad vial
+    - Certificaciones BASC/ISO
+
+12. **Métricas de Sostenibilidad**
+    - Cálculo de huella de carbono por servicio
+    - Reportes de emisiones CO2
+    - Optimización de rutas para reducción de combustible
 
 ---
 
@@ -1394,6 +1848,6 @@ Para reportar problemas, solicitar funcionalidades o contribuir al proyecto:
 
 ---
 
-**Última actualización:** 2025-12-17  
-**Versión:** 1.7.0  
-**Estado:** ✅ Producción
+**Última actualización:** 2026-04-17  
+**Versión:** 1.8.0  
+**Estado:** ✅ Producción con Modo Pruebas
