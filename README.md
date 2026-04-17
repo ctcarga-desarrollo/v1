@@ -486,6 +486,123 @@ El sistema registra:
 5. **Machine learning**: Predicción de tasa de aceptación
 6. **Reasignación automática**: Si un vehículo cancela después de aceptar
 
+---
+
+## Sistema de Programación de Turnos de Cargue
+
+### Descripción
+Sistema automático que calcula y asigna turnos de cargue a los vehículos en función del orden de aceptación, la capacidad de los sitios de cargue y los tiempos estimados.
+
+### Flujo de Programación
+
+#### 1. Cálculo Previo de Turnos
+Cuando una oferta es **publicada**, el sistema:
+- ✅ Lee los parámetros de `info_cargue`:
+  - `fechaInicio` / `horaInicio`: Hora de inicio del primer turno
+  - `tiempoEstimado`: Tiempo de cargue por vehículo (en minutos)
+  - `sitiosCargue`: Número de sitios/bahías de cargue disponibles
+- ✅ Calcula el tiempo por turno: `tiempoEstimado + 10 minutos de holgura`
+- ✅ Calcula el número de turnos necesarios: `⌈num_vehiculos ÷ sitios_cargue⌉`
+- ✅ Genera los turnos con estructura:
+  ```json
+  {
+    "numero_turno": 1,
+    "hora_inicio": "2025-01-20T08:00:00",
+    "hora_fin": "2025-01-20T09:10:00",
+    "capacidad_total": 2,
+    "capacidad_disponible": 2,
+    "vehiculos_asignados": []
+  }
+  ```
+- ✅ Guarda los turnos en `asignaciones_vehiculos.turnos_cargue`
+
+#### 2. Asignación al Aceptar
+Cuando un vehículo **acepta** la oferta:
+- ✅ Se le asigna al **primer turno con capacidad disponible**
+- ✅ El orden de asignación respeta el **orden de aceptación**
+- ✅ Se decrementa la `capacidad_disponible` del turno
+- ✅ Se registra en el vehículo:
+  - `turno_cargue`: Número del turno asignado
+  - `hora_cargue`: Hora de inicio del turno
+- ✅ Se agrega a `turnos_cargue[n].vehiculos_asignados[]`
+
+#### 3. Reglas de Asignación
+
+**Orden estricto:**
+- Los primeros `N` vehículos que aceptan → Turno 1
+- Los siguientes `N` vehículos → Turno 2
+- Y así sucesivamente
+
+**Ejemplo práctico:**
+```
+Configuración:
+- 5 vehículos totales
+- 2 sitios de cargue
+- 60 minutos por vehículo + 10 min holgura = 70 min/turno
+
+Resultado:
+  Turno 1 (08:00 - 09:10): Vehículos 1 y 2
+  Turno 2 (09:10 - 10:20): Vehículos 3 y 4
+  Turno 3 (10:20 - 11:30): Vehículo 5
+```
+
+### Beneficios
+
+- ✅ **Organización automática**: No requiere intervención manual
+- ✅ **Optimización de tiempos**: Maximiza uso de sitios de cargue
+- ✅ **Transparencia**: Cada vehículo conoce su hora exacta
+- ✅ **Flexibilidad**: Se adapta a cualquier configuración de sitios/tiempos
+- ✅ **Equidad**: Respeta estrictamente el orden de aceptación
+
+### Estructura de Datos
+
+**En `asignaciones_vehiculos`:**
+```json
+{
+  "oferta_id": "...",
+  "turnos_cargue": [
+    {
+      "numero_turno": 1,
+      "hora_inicio": "2025-01-20T08:00:00Z",
+      "hora_fin": "2025-01-20T09:10:00Z",
+      "capacidad_total": 2,
+      "capacidad_disponible": 0,
+      "vehiculos_asignados": [
+        {"vehiculo_id": "v1", "placa": "ABC123", "timestamp_asignacion": "..."},
+        {"vehiculo_id": "v2", "placa": "DEF456", "timestamp_asignacion": "..."}
+      ]
+    }
+  ],
+  "vehiculos_asignados": [
+    {
+      "vehiculo_id": "v1",
+      "placa": "ABC123",
+      "turno_cargue": 1,
+      "hora_cargue": "2025-01-20T08:00:00Z"
+    }
+  ]
+}
+```
+
+**En `vehiculos`:**
+```json
+{
+  "id": "v1",
+  "placa": "ABC123",
+  "estado": "asignado",
+  "oferta_asignada": "oferta_id",
+  "turno_cargue": 1
+}
+```
+
+### Próximas Funcionalidades
+
+1. **UI de visualización**: Timeline visual de turnos
+2. **Notificaciones**: Alertas 1 hora antes del turno
+3. **Reasignación**: Cambio de turno si un vehículo cancela
+4. **Check-in**: QR code para registro de llegada al sitio
+
+
 
 
 ## API REST
@@ -879,6 +996,18 @@ Variables de entorno:
 - ✅ **Registro de `tiempo_disponible_desde` al cambiar a disponible**
 - ✅ **Vehículos nuevos se crean con estado "disponible" por defecto**
 
+#### **Sistema de Programación de Turnos de Cargue:**
+- ✅ Cálculo automático de turnos al publicar oferta
+- ✅ Algoritmo basado en: hora inicio + tiempo estimado + holgura 10 mins
+- ✅ Capacidad por turno según sitios de cargue disponibles
+- ✅ Asignación automática de turno al aceptar oferta
+- ✅ Orden estricto: respeta orden de aceptación de vehículos
+- ✅ Estructura completa de turnos guardada en `asignaciones_vehiculos.turnos_cargue`
+- ✅ Cada vehículo asignado tiene: `turno_cargue` y `hora_cargue`
+- ✅ Actualización dinámica de capacidad disponible por turno
+- ✅ Funciones: `calcular_turnos_cargue()` y `asignar_vehiculo_a_turno()`
+- ✅ Soporte para múltiples vehículos y configuraciones flexibles
+
 ---
 
 ## Soporte y Contacto
@@ -890,6 +1019,6 @@ Para reportar problemas, solicitar funcionalidades o contribuir al proyecto:
 
 ---
 
-**Última actualización:** 2025-07-15  
-**Versión:** 1.4.0  
+**Última actualización:** 2025-12-17  
+**Versión:** 1.5.0  
 **Estado:** ✅ Producción

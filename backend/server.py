@@ -174,6 +174,95 @@ def vehiculo_cumple_requisitos(vehiculo: dict, oferta_vehiculo: dict) -> bool:
     
     return True
 
+def calcular_turnos_cargue(hora_inicio: str, tiempo_estimado_mins: int, num_vehiculos_total: int, sitios_cargue: int) -> list:
+    """
+    Calcula los turnos de cargue disponibles basados en:
+    - hora_inicio: Hora de inicio del primer turno (formato ISO)
+    - tiempo_estimado_mins: Tiempo estimado de cargue por vehículo en minutos
+    - num_vehiculos_total: Número total de vehículos que se necesitan cargar
+    - sitios_cargue: Número de sitios de cargue disponibles (capacidad por turno)
+    
+    Retorna una lista de turnos con estructura:
+    {
+        "numero_turno": 1,
+        "hora_inicio": "2025-01-15T08:00:00",
+        "hora_fin": "2025-01-15T09:20:00",
+        "capacidad_total": 2,
+        "capacidad_disponible": 2,
+        "vehiculos_asignados": []
+    }
+    """
+    turnos = []
+    
+    # Validaciones
+    if sitios_cargue <= 0:
+        sitios_cargue = 1
+    if tiempo_estimado_mins <= 0:
+        tiempo_estimado_mins = 60
+    if num_vehiculos_total <= 0:
+        num_vehiculos_total = 1
+    
+    # Tiempo por turno: tiempo_estimado + 10 minutos de holgura
+    tiempo_por_turno_mins = tiempo_estimado_mins + 10
+    
+    # Calcular número de turnos necesarios
+    num_turnos = (num_vehiculos_total + sitios_cargue - 1) // sitios_cargue  # Redondeo hacia arriba
+    
+    # Parsear hora de inicio
+    try:
+        if isinstance(hora_inicio, str):
+            hora_actual = datetime.fromisoformat(hora_inicio.replace('Z', '+00:00'))
+        else:
+            hora_actual = hora_inicio
+    except Exception:
+        # Si hay error, usar hora actual
+        hora_actual = datetime.now(timezone.utc)
+    
+    # Generar turnos
+    for i in range(1, num_turnos + 1):
+        hora_fin = hora_actual + timedelta(minutes=tiempo_por_turno_mins)
+        
+        turno = {
+            "numero_turno": i,
+            "hora_inicio": hora_actual.isoformat(),
+            "hora_fin": hora_fin.isoformat(),
+            "capacidad_total": sitios_cargue,
+            "capacidad_disponible": sitios_cargue,
+            "vehiculos_asignados": []
+        }
+        
+        turnos.append(turno)
+        
+        # Avanzar a la siguiente hora de inicio
+        hora_actual = hora_fin
+    
+    return turnos
+
+def asignar_vehiculo_a_turno(turnos: list, vehiculo_info: dict) -> tuple[list, int]:
+    """
+    Asigna un vehículo al primer turno disponible.
+    
+    Args:
+        turnos: Lista de turnos disponibles
+        vehiculo_info: Información del vehículo a asignar {vehiculo_id, placa, etc}
+    
+    Returns:
+        (turnos_actualizados, numero_turno_asignado)
+    """
+    for turno in turnos:
+        if turno["capacidad_disponible"] > 0:
+            # Asignar vehículo a este turno
+            turno["vehiculos_asignados"].append({
+                "vehiculo_id": vehiculo_info.get("vehiculo_id"),
+                "placa": vehiculo_info.get("placa"),
+                "timestamp_asignacion": datetime.now(timezone.utc).isoformat()
+            })
+            turno["capacidad_disponible"] -= 1
+            return turnos, turno["numero_turno"]
+    
+    # Si no hay turnos disponibles, retornar None
+    return turnos, None
+
 def simular_proximidad() -> tuple[bool, float]:
     """
     Simula si un vehículo está dentro del radio de 20km.
@@ -341,9 +430,32 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
         logger.info(f"Objetivo de completitud: {completitud_objetivo * 100}% para oferta {oferta.get('codigo_oferta')}")
         
         # Determinar cantidad de vehículos necesarios
-        # Por ahora usar 1, luego se puede extender
+        # Leer de fletes si está disponible, sino usar 1
         vehiculos_necesarios = 1
+        fletes = oferta.get("fletes", [])
+        if fletes and len(fletes) > 0:
+            vehiculos_necesarios = max(1, sum(flete.get("cantidad", 1) for flete in fletes))
+        
         vehiculos_objetivo = max(1, int(vehiculos_necesarios * completitud_objetivo))
+        
+        # Calcular turnos de cargue
+        info_cargue = oferta.get("info_cargue", {})
+        hora_inicio = info_cargue.get("fechaInicio") or info_cargue.get("horaInicio")
+        tiempo_estimado = info_cargue.get("tiempoEstimado", 60)  # Default 60 minutos
+        sitios_cargue = info_cargue.get("sitiosCargue", 1)  # Default 1 sitio
+        
+        # Si no hay hora de inicio, usar una por defecto (mañana a las 8am)
+        if not hora_inicio:
+            hora_inicio = (datetime.now(timezone.utc) + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+        
+        turnos_cargue = calcular_turnos_cargue(
+            hora_inicio=hora_inicio,
+            tiempo_estimado_mins=tiempo_estimado,
+            num_vehiculos_total=vehiculos_necesarios,
+            sitios_cargue=sitios_cargue
+        )
+        
+        logger.info(f"Turnos de cargue calculados: {len(turnos_cargue)} turnos con capacidad de {sitios_cargue} vehículos cada uno")
         
         # Crear registro de asignación
         asignacion = {
@@ -357,6 +469,7 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
             "vehiculos_asignados": [],
             "vehiculos_rechazados": [],
             "vehiculos_contactados": [],  # Lista de IDs de vehículos ya contactados
+            "turnos_cargue": turnos_cargue,  # Turnos pre-calculados
             "etapa_actual": "FLOTA_PROPIA",
             "ciclo_actual": 1,
             "alertas": [],
@@ -391,6 +504,20 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
             for res in resultados_propia:
                 vehiculos_ya_contactados.append(res["vehiculo_id"])
                 if res["estado"] == "ASIGNADO":
+                    # Asignar turno de cargue
+                    turnos_actualizados, numero_turno = asignar_vehiculo_a_turno(
+                        turnos_cargue,
+                        {"vehiculo_id": res["vehiculo_id"], "placa": res["placa"]}
+                    )
+                    turnos_cargue = turnos_actualizados
+                    res["turno_cargue"] = numero_turno
+                    
+                    if numero_turno:
+                        turno_info = next((t for t in turnos_cargue if t["numero_turno"] == numero_turno), None)
+                        if turno_info:
+                            res["hora_cargue"] = turno_info["hora_inicio"]
+                            logger.info(f"Vehículo {res['placa']} asignado al turno {numero_turno} ({turno_info['hora_inicio']})")
+                    
                     asignados.append(res)
                     # Cambiar estado del vehículo a "asignado"
                     await db.vehiculos.update_one(
@@ -398,7 +525,8 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
                         {"$set": {
                             "estado": "asignado",
                             "oferta_asignada": oferta_id,
-                            "fecha_asignacion": datetime.now(timezone.utc)
+                            "fecha_asignacion": datetime.now(timezone.utc),
+                            "turno_cargue": numero_turno
                         }}
                     )
                 else:
@@ -416,6 +544,20 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
             for res in resultados_vinculados:
                 vehiculos_ya_contactados.append(res["vehiculo_id"])
                 if res["estado"] == "ASIGNADO":
+                    # Asignar turno de cargue
+                    turnos_actualizados, numero_turno = asignar_vehiculo_a_turno(
+                        turnos_cargue,
+                        {"vehiculo_id": res["vehiculo_id"], "placa": res["placa"]}
+                    )
+                    turnos_cargue = turnos_actualizados
+                    res["turno_cargue"] = numero_turno
+                    
+                    if numero_turno:
+                        turno_info = next((t for t in turnos_cargue if t["numero_turno"] == numero_turno), None)
+                        if turno_info:
+                            res["hora_cargue"] = turno_info["hora_inicio"]
+                            logger.info(f"Vehículo {res['placa']} asignado al turno {numero_turno} ({turno_info['hora_inicio']})")
+                    
                     asignados.append(res)
                     # Cambiar estado del vehículo a "asignado"
                     await db.vehiculos.update_one(
@@ -423,7 +565,8 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
                         {"$set": {
                             "estado": "asignado",
                             "oferta_asignada": oferta_id,
-                            "fecha_asignacion": datetime.now(timezone.utc)
+                            "fecha_asignacion": datetime.now(timezone.utc),
+                            "turno_cargue": numero_turno
                         }}
                     )
                 else:
@@ -441,7 +584,7 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
                 # Simular algunos vehículos de terceros
                 for i in range(vehiculos_restantes):
                     if random.random() < 0.5:  # 50% de éxito con terceros
-                        asignados.append({
+                        vehiculo_tercero = {
                             "vehiculo_id": f"TERCERO_{uuid.uuid4()}",
                             "placa": f"EXT{random.randint(100, 999)}",
                             "marca": "TERCERO",
@@ -453,7 +596,23 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
                             "etapa": "TERCEROS",
                             "ciclo": ciclo,
                             "timestamp": datetime.now(timezone.utc)
-                        })
+                        }
+                        
+                        # Asignar turno de cargue a terceros
+                        turnos_actualizados, numero_turno = asignar_vehiculo_a_turno(
+                            turnos_cargue,
+                            {"vehiculo_id": vehiculo_tercero["vehiculo_id"], "placa": vehiculo_tercero["placa"]}
+                        )
+                        turnos_cargue = turnos_actualizados
+                        vehiculo_tercero["turno_cargue"] = numero_turno
+                        
+                        if numero_turno:
+                            turno_info = next((t for t in turnos_cargue if t["numero_turno"] == numero_turno), None)
+                            if turno_info:
+                                vehiculo_tercero["hora_cargue"] = turno_info["hora_inicio"]
+                                logger.info(f"Vehículo tercero {vehiculo_tercero['placa']} asignado al turno {numero_turno}")
+                        
+                        asignados.append(vehiculo_tercero)
         
         # Calcular porcentaje completado
         porcentaje = (len(asignados) / vehiculos_necesarios) * 100 if vehiculos_necesarios > 0 else 0
@@ -492,6 +651,7 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
                 "vehiculos_asignados": asignados,
                 "vehiculos_rechazados": rechazados,
                 "vehiculos_contactados": vehiculos_ya_contactados,
+                "turnos_cargue": turnos_cargue,  # Guardar turnos actualizados
                 "porcentaje_completado": porcentaje,
                 "alertas": alertas,
                 "fecha_ultima_actualizacion": datetime.now(timezone.utc),
