@@ -22,11 +22,18 @@ export default function VehiculosAsignados() {
   const cargarVehiculosAsignados = async () => {
     try {
       const res = await fetch(`${API}/api/ofertas/${id}/vehiculos-asignados`, {
-        credentials: 'include'
+        credentials: 'include',
+        cache: 'no-cache',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
       });
       if (res.ok) {
         const data = await res.json();
         setDatos(data);
+      } else {
+        console.error('Error al cargar vehículos:', res.status);
       }
     } catch (err) {
       console.error('Error al cargar vehículos:', err);
@@ -47,9 +54,21 @@ export default function VehiculosAsignados() {
       
       if (res.ok) {
         const result = await res.json();
-        // Recargar datos para mostrar el nuevo estado
-        await cargarVehiculosAsignados();
-        alert(`✅ ${result.mensaje || 'Estado actualizado correctamente'}`);
+        // Recargar datos inmediatamente
+        const reloadRes = await fetch(`${API}/api/ofertas/${id}/vehiculos-asignados`, {
+          credentials: 'include',
+          cache: 'no-cache',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+        
+        if (reloadRes.ok) {
+          const newData = await reloadRes.json();
+          setDatos(newData);
+          console.log('✅ Estado actualizado:', result.mensaje);
+        }
       } else {
         const error = await res.json();
         alert(`❌ Error: ${error.detail || 'No se pudo actualizar el estado'}`);
@@ -74,11 +93,21 @@ export default function VehiculosAsignados() {
       
       if (res.ok) {
         const result = await res.json();
-        // Recargar datos primero
-        setLoading(true);
-        await cargarVehiculosAsignados();
-        // Mostrar mensaje después de actualizar
-        console.log('✅ Simulación exitosa:', result.mensaje);
+        // Recargar datos inmediatamente
+        const reloadRes = await fetch(`${API}/api/ofertas/${id}/vehiculos-asignados`, {
+          credentials: 'include',
+          cache: 'no-cache',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+        
+        if (reloadRes.ok) {
+          const newData = await reloadRes.json();
+          setDatos(newData);
+          console.log('✅ Simulación exitosa:', result.mensaje);
+        }
       } else {
         const error = await res.json();
         alert(`❌ Error: ${error.detail || 'No se pudo simular la asignación'}`);
