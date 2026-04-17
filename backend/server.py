@@ -1834,25 +1834,22 @@ async def simular_asignacion_progresiva(request: Request, oferta_id: str, data: 
     if not oferta:
         raise HTTPException(status_code=404, detail="Oferta no encontrada")
     
-    # Calcular vehículos requeridos desde los fletes de la oferta
-    vehiculos_necesarios = 1  # Valor mínimo por defecto
-    fletes = oferta.get("fletes", [])
+    # Calcular vehículos requeridos desde la oferta
+    # Prioridad: info_cargue.sitiosCargue > valor por defecto razonable
+    vehiculos_necesarios = 5  # Valor por defecto razonable para testing
     
-    if fletes:
-        if isinstance(fletes, list) and len(fletes) > 0:
-            # Si es lista de objetos
-            if isinstance(fletes[0], dict):
-                cantidad_fletes = sum(flete.get("cantidad", 0) for flete in fletes)
-                vehiculos_necesarios = max(1, cantidad_fletes)
-            else:
-                # Si es lista de strings, usar la longitud
-                vehiculos_necesarios = max(1, len(fletes))
-        elif isinstance(fletes, dict):
-            # Si es un dict con cantidad
-            vehiculos_necesarios = max(1, fletes.get("cantidad", 1))
+    # Intentar obtener desde info_cargue
+    info_cargue = oferta.get("info_cargue", {})
+    sitios_cargue = info_cargue.get("sitiosCargue", 0)
+    if sitios_cargue and sitios_cargue > 0:
+        # Usar sitios de cargue como referencia base
+        vehiculos_necesarios = max(1, int(sitios_cargue))
     
-    # Asegurar mínimo 1
-    vehiculos_necesarios = max(1, vehiculos_necesarios)
+    # Si ya existe una asignación, usar el valor guardado
+    if asignacion:
+        vehiculos_necesarios = asignacion.get("vehiculos_requeridos", vehiculos_necesarios)
+    
+    logger.info(f"Vehículos necesarios para oferta {oferta.get('codigo_oferta')}: {vehiculos_necesarios}")
     
     # Buscar o crear asignación
     asignacion = await db.asignaciones_vehiculos.find_one(

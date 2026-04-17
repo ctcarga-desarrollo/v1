@@ -278,7 +278,7 @@ export default function VehiculosAsignados() {
         <h1>Vehículos Asignados</h1>
       </div>
 
-      {/* Resumen mejorado con métricas separadas */}
+      {/* Resumen mejorado con campos separados */}
       <div className="oferta-section" style={{ marginBottom: '24px' }}>
         <div className="oferta-section-grid cols-4">
           <div className="info-item">
@@ -288,9 +288,19 @@ export default function VehiculosAsignados() {
             </div>
           </div>
           <div className="info-item">
+            <div className="info-label">Vehículos Requeridos</div>
+            <div className="info-value" style={{ fontWeight: '700', fontSize: '16px', color: '#6366f1' }}>
+              {datos.resumen.vehiculos_requeridos}
+            </div>
+          </div>
+          <div className="info-item">
             <div className="info-label">Vehículos Asignados</div>
-            <div className="info-value" style={{ fontWeight: '700', fontSize: '16px', color: datos.resumen.asignacion_completa ? '#059669' : '#d97706' }}>
-              {datos.resumen.total_asignados} / {datos.resumen.vehiculos_requeridos}
+            <div className="info-value" style={{ 
+              fontWeight: '700', 
+              fontSize: '16px', 
+              color: datos.resumen.asignacion_completa ? '#059669' : '#d97706' 
+            }}>
+              {datos.resumen.total_asignados}
             </div>
             {(datos.resumen.reales > 0 || datos.resumen.simulados > 0) && (
               <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
@@ -305,13 +315,7 @@ export default function VehiculosAsignados() {
             )}
           </div>
           <div className="info-item">
-            <div className="info-label">Turnos Programados</div>
-            <div className="info-value" style={{ fontWeight: '700', fontSize: '16px' }}>
-              {datos.resumen.total_turnos}
-            </div>
-          </div>
-          <div className="info-item">
-            <div className="info-label">Estado</div>
+            <div className="info-label">Estado Asignación</div>
             <div className="info-value" style={{ 
               fontWeight: '700', 
               fontSize: '16px', 
