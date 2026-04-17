@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileText, MapPin, Phone, Clock, Truck, AlertCircle, CheckCircle } from 'lucide-react';
+import { ArrowLeft, FileText, MapPin, Phone, Clock, Truck, AlertCircle, CheckCircle, ChevronRight } from 'lucide-react';
 import '@/pages/Ofertas.css';
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -13,6 +13,7 @@ export default function VehiculosAsignados() {
   const [modalDocumentos, setModalDocumentos] = useState(null);
   const [modalGPS, setModalGPS] = useState(null);
   const [modalContacto, setModalContacto] = useState(null);
+  const [avanzandoEstado, setAvanzandoEstado] = useState(null);
 
   useEffect(() => {
     cargarVehiculosAsignados();
@@ -31,6 +32,33 @@ export default function VehiculosAsignados() {
       console.error('Error al cargar vehículos:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const avanzarEstadoVehiculo = async (vehiculoId) => {
+    setAvanzandoEstado(vehiculoId);
+    try {
+      const res = await fetch(`${API}/api/vehiculos/${vehiculoId}/avanzar-estado`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ oferta_id: id })
+      });
+      
+      if (res.ok) {
+        const result = await res.json();
+        // Recargar datos para mostrar el nuevo estado
+        await cargarVehiculosAsignados();
+        alert(`✅ ${result.mensaje || 'Estado actualizado correctamente'}`);
+      } else {
+        const error = await res.json();
+        alert(`❌ Error: ${error.detail || 'No se pudo actualizar el estado'}`);
+      }
+    } catch (err) {
+      console.error('Error al avanzar estado:', err);
+      alert('❌ Error al actualizar el estado del vehículo');
+    } finally {
+      setAvanzandoEstado(null);
     }
   };
 
@@ -195,12 +223,13 @@ export default function VehiculosAsignados() {
         <table className="data-table">
           <thead>
             <tr>
-              <th style={{ width: '18%' }}>Placa</th>
-              <th style={{ width: '18%' }}>Conductor</th>
-              <th style={{ width: '14%' }}>Tipo</th>
-              <th style={{ width: '16%' }}>Estado del proceso</th>
-              <th style={{ width: '18%' }}>Turno de Cargue</th>
-              <th style={{ width: '16%', textAlign: 'center' }}>Acciones</th>
+              <th style={{ width: '16%' }}>Placa</th>
+              <th style={{ width: '16%' }}>Conductor</th>
+              <th style={{ width: '12%' }}>Tipo</th>
+              <th style={{ width: '14%' }}>Estado del proceso</th>
+              <th style={{ width: '16%' }}>Turno de Cargue</th>
+              <th style={{ width: '14%', textAlign: 'center' }}>Acciones</th>
+              <th style={{ width: '12%', textAlign: 'center' }}>Avanzar Estado</th>
             </tr>
           </thead>
           <tbody>
@@ -337,6 +366,33 @@ export default function VehiculosAsignados() {
                       >
                         <Phone size={16} />
                       </button>
+                    </div>
+                  </td>
+                  
+                  {/* Botón Avanzar Estado */}
+                  <td>
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      {vehiculo.estado.toLowerCase() !== 'finalizado' ? (
+                        <button
+                          onClick={() => avanzarEstadoVehiculo(vehiculo.vehiculo_id)}
+                          disabled={avanzandoEstado === vehiculo.vehiculo_id}
+                          className="btn-icon-action"
+                          style={{ 
+                            background: avanzandoEstado === vehiculo.vehiculo_id ? '#e5e7eb' : '#dcfce7',
+                            color: '#166534',
+                            borderColor: '#86efac',
+                            cursor: avanzandoEstado === vehiculo.vehiculo_id ? 'not-allowed' : 'pointer',
+                            opacity: avanzandoEstado === vehiculo.vehiculo_id ? 0.6 : 1
+                          }}
+                          title="Avanzar al siguiente estado"
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                          Finalizado
+                        </span>
+                      )}
                     </div>
                   </td>
                 </tr>

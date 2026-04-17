@@ -237,17 +237,20 @@ const Ofertas = () => {
                           </td>
                           <td>
                             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                              <button 
-                                className="btn-icon-action btn-icon-asignar" 
-                                onClick={() => {
-                                  setSelectedOferta(oferta);
-                                  handleAsignarVehiculos();
-                                }} 
-                                data-testid={`asignar-btn-${oferta.id}`}
-                                title="Asignar vehículos"
-                              >
-                                <Truck size={16} />
-                              </button>
+                              {/* Botón Asignar Vehículos - Solo visible para ofertas SIN ASIGNAR */}
+                              {(oferta.estado === 'SIN ASIGNAR' || oferta.estado === 'Sin Asignar') && (
+                                <button 
+                                  className="btn-icon-action btn-icon-asignar" 
+                                  onClick={() => {
+                                    setSelectedOferta(oferta);
+                                    handleAsignarVehiculos();
+                                  }} 
+                                  data-testid={`asignar-btn-${oferta.id}`}
+                                  title="Asignar vehículos"
+                                >
+                                  <Truck size={16} />
+                                </button>
+                              )}
                               
                               {/* Botón Vehículos Asignados - Solo visible para ofertas publicadas */}
                               {(oferta.estado === 'EN PROCESO DE ASIGNACIÓN' || 

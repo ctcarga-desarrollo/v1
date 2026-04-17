@@ -1531,6 +1531,168 @@ async def get_vehiculos_asignados(request: Request, oferta_id: str):
     }
 
 
+@api_router.post("/vehiculos/{vehiculo_id}/avanzar-estado")
+async def avanzar_estado_vehiculo(request: Request, vehiculo_id: str, data: dict):
+    """
+    Avanza el estado de un vehículo al siguiente en el flujo operativo.
+    Flujo: asignado → en_cargue → en_ruta → en_descargue → finalizado
+    No permite saltar estados ni retroceder.
+    """
+    user = await get_current_user(request)
+    check_role(user, ROLE_WRITE)
+    
+    oferta_id = data.get("oferta_id")
+    
+    # Flujo de estados permitido
+    FLUJO_ESTADOS = ["asignado", "en_cargue", "en_ruta", "en_descargue", "finalizado"]
+    
+    # Buscar el vehículo
+    if vehiculo_id.startswith("TERCERO_"):
+        # Es un tercero externo, buscar en asignaciones
+        asignacion = await db.asignaciones_vehiculos.find_one(
+            {"oferta_id": oferta_id, "tenant_id": user["tenant_id"]},
+            {"_id": 0}
+        )
+        
+        if not asignacion:
+            raise HTTPException(status_code=404, detail="Asignación no encontrada")
+        
+        # Buscar vehículo en la lista de asignados
+        vehiculo_asignado = None
+        for veh in asignacion.get("vehiculos_asignados", []):
+            if veh.get("vehiculo_id") == vehiculo_id:
+                vehiculo_asignado = veh
+                break
+        
+        if not vehiculo_asignado:
+            raise HTTPException(status_code=404, detail="Vehículo no encontrado en asignación")
+        
+        estado_actual = vehiculo_asignado.get("estado", "asignado").lower()
+        
+        # Validar que no está finalizado
+        if estado_actual == "finalizado":
+            raise HTTPException(status_code=400, detail="El vehículo ya finalizó el proceso")
+        
+        # Obtener siguiente estado
+        try:
+            indice_actual = FLUJO_ESTADOS.index(estado_actual)
+            siguiente_estado = FLUJO_ESTADOS[indice_actual + 1]
+        except (ValueError, IndexError):
+            raise HTTPException(status_code=400, detail="Estado actual no válido o no se puede avanzar más")
+        
+        # Actualizar estado en asignaciones_vehiculos
+        await db.asignaciones_vehiculos.update_one(
+            {
+                "oferta_id": oferta_id, 
+                "tenant_id": user["tenant_id"],
+                "vehiculos_asignados.vehiculo_id": vehiculo_id
+            },
+            {
+                "$set": {
+                    "vehiculos_asignados.$.estado": siguiente_estado,
+                    "vehiculos_asignados.$.fecha_cambio_estado": datetime.now(timezone.utc)
+                }
+            }
+        )
+        
+        # Registrar actividad
+        await registrar_actividad(
+            db=db,
+            usuario=user["email"],
+            accion="CAMBIO_ESTADO",
+            modulo="VEHICULOS",
+            registro_id=vehiculo_id,
+            tenant_id=user["tenant_id"],
+            ip=request.client.host if request.client else "unknown",
+            detalles={
+                "estado_anterior": estado_actual,
+                "estado_nuevo": siguiente_estado,
+                "oferta_id": oferta_id,
+                "tipo": "tercero_externo"
+            }
+        )
+        
+        return {
+            "success": True,
+            "vehiculo_id": vehiculo_id,
+            "estado_anterior": estado_actual,
+            "estado_nuevo": siguiente_estado,
+            "mensaje": f"Estado actualizado: {estado_actual} → {siguiente_estado}"
+        }
+    
+    else:
+        # Es un vehículo registrado en la base de datos
+        vehiculo = await db.vehiculos.find_one({"id": vehiculo_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+        
+        if not vehiculo:
+            raise HTTPException(status_code=404, detail="Vehículo no encontrado")
+        
+        estado_actual = vehiculo.get("estado", "asignado").lower()
+        
+        # Validar que no está finalizado
+        if estado_actual == "finalizado":
+            raise HTTPException(status_code=400, detail="El vehículo ya finalizó el proceso")
+        
+        # Obtener siguiente estado
+        try:
+            indice_actual = FLUJO_ESTADOS.index(estado_actual)
+            siguiente_estado = FLUJO_ESTADOS[indice_actual + 1]
+        except (ValueError, IndexError):
+            raise HTTPException(status_code=400, detail="Estado actual no válido o no se puede avanzar más")
+        
+        # Actualizar estado en colección vehiculos
+        await db.vehiculos.update_one(
+            {"id": vehiculo_id, "tenant_id": user["tenant_id"]},
+            {
+                "$set": {
+                    "estado": siguiente_estado,
+                    "fecha_cambio_estado": datetime.now(timezone.utc)
+                }
+            }
+        )
+        
+        # Actualizar también en asignaciones_vehiculos
+        await db.asignaciones_vehiculos.update_one(
+            {
+                "oferta_id": oferta_id, 
+                "tenant_id": user["tenant_id"],
+                "vehiculos_asignados.vehiculo_id": vehiculo_id
+            },
+            {
+                "$set": {
+                    "vehiculos_asignados.$.estado": siguiente_estado,
+                    "vehiculos_asignados.$.fecha_cambio_estado": datetime.now(timezone.utc)
+                }
+            }
+        )
+        
+        # Registrar actividad
+        await registrar_actividad(
+            db=db,
+            usuario=user["email"],
+            accion="CAMBIO_ESTADO",
+            modulo="VEHICULOS",
+            registro_id=vehiculo_id,
+            tenant_id=user["tenant_id"],
+            ip=request.client.host if request.client else "unknown",
+            detalles={
+                "placa": vehiculo.get("placa"),
+                "estado_anterior": estado_actual,
+                "estado_nuevo": siguiente_estado,
+                "oferta_id": oferta_id
+            }
+        )
+        
+        return {
+            "success": True,
+            "vehiculo_id": vehiculo_id,
+            "placa": vehiculo.get("placa"),
+            "estado_anterior": estado_actual,
+            "estado_nuevo": siguiente_estado,
+            "mensaje": f"Estado actualizado: {estado_actual} → {siguiente_estado}"
+        }
+
+
 @api_router.post("/ofertas/{oferta_id}/finalizar")
 async def finalizar_oferta(request: Request, oferta_id: str):
     """
