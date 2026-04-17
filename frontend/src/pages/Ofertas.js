@@ -252,17 +252,12 @@ const Ofertas = () => {
                                 </button>
                               )}
                               
-                              {/* Botón Vehículos Asignados - Solo visible para ofertas publicadas */}
-                              {(oferta.estado === 'EN PROCESO DE ASIGNACIÓN' || 
-                                oferta.estado === 'ASIGNADO' || 
-                                oferta.estado === 'EN PROCESO DE CARGUE' ||
-                                oferta.estado === 'EN RUTA' ||
-                                oferta.estado === 'EN PROCESO DE DESCARGUE' ||
-                                oferta.estado === 'FINALIZADA') && (
+                              {/* Botón Vehículos Asignados - Visible después de publicar (todos los estados excepto SIN ASIGNAR) */}
+                              {oferta.estado !== 'SIN ASIGNAR' && (
                                 <button 
                                   className="btn-icon-action btn-icon-vehiculos" 
                                   onClick={() => navigate(`/ofertas/${oferta.id}/vehiculos-asignados`)}
-                                  title="Vehículos asignados"
+                                  title="Ver vehículos asignados"
                                   style={{ background: '#3b82f6', color: 'white', borderColor: '#3b82f6' }}
                                 >
                                   <Truck size={16} />
