@@ -18,11 +18,15 @@ const ESTADOS = [
 
 const estadoClass = (estado) => {
   const map = {
-    'SIN ASIGNAR': 'sin-asignar', 'Sin Asignar': 'sin-asignar',
+    'SIN ASIGNAR': 'sin-asignar', 
+    'Sin Asignar': 'sin-asignar',
     'ASIGNADO': 'asignado',
-    'EN PROCESO DE CARGUE': 'en-proceso',
-    'EN RUTA': 'en-ruta',
-    'EN PROCESO DE DESCARGUE': 'en-proceso',
+    'ASIGNADA': 'asignado',  // Mismo color que ASIGNADO
+    'EN PROCESO DE ASIGNACIÓN': 'en-proceso-asignacion',
+    'EN PROCESO DE CARGUE': 'en-proceso-cargue',
+    'EN CURSO': 'en-curso',
+    'EN RUTA': 'en-curso',  // Mismo color que EN CURSO
+    'EN PROCESO DE DESCARGUE': 'en-proceso-descargue',
     'PENDIENTE DOCUMENTACIÓN': 'pendiente-doc',
     'FINALIZADA': 'finalizada',
   };

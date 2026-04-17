@@ -135,7 +135,7 @@
   margin-top: 6px;
 }
 
-/* Estado badges */
+/* Estado badges con colores coherentes al flujo operativo */
 .estado-badge {
   display: inline-block;
   padding: 4px 12px;
@@ -148,28 +148,50 @@
   font-size: 14px;
   padding: 6px 16px;
 }
+
+/* SIN ASIGNAR / ASIGNADO → Azul (estado inicial / neutro) */
 .estado-badge.sin-asignar {
-  background: #fef3c7;
-  color: #92400e;
+  background: #dbeafe;
+  color: #1e40af;
 }
 .estado-badge.asignado {
   background: #dbeafe;
   color: #1e40af;
 }
-.estado-badge.en-proceso {
+
+/* EN PROCESO DE ASIGNACIÓN → Amarillo (proceso activo) */
+.estado-badge.en-proceso-asignacion {
   background: #fef3c7;
-  color: #b45309;
+  color: #92400e;
 }
-.estado-badge.en-ruta {
-  background: #d1fae5;
-  color: #065f46;
+
+/* EN PROCESO DE CARGUE → Naranja (inicio de operación) */
+.estado-badge.en-proceso-cargue {
+  background: #fed7aa;
+  color: #9a3412;
 }
+
+/* EN CURSO (EN RUTA) → Azul intenso/índigo (operación en ejecución) */
+.estado-badge.en-curso {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+/* EN PROCESO DE DESCARGUE → Morado (fase final) */
+.estado-badge.en-proceso-descargue {
+  background: #e9d5ff;
+  color: #6b21a8;
+}
+
+/* PENDIENTE DOCUMENTACIÓN → Rosa */
 .estado-badge.pendiente-doc {
   background: #fce7f3;
   color: #9d174d;
 }
+
+/* FINALIZADA → Verde (completado) */
 .estado-badge.finalizada {
-  background: #f0fdf4;
+  background: #dcfce7;
   border: 1px solid #86efac;
   color: #166534;
 }
