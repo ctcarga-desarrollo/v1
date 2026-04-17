@@ -94,9 +94,9 @@ export default function VehiculosAsignados() {
   const getEstadoLabel = (estado) => {
     const labels = {
       'asignado': 'Asignado',
-      'en_cargue': 'En Cargue',
-      'en_ruta': 'En Ruta',
-      'en_descargue': 'En Descargue',
+      'en_cargue': 'En cargue',
+      'en_ruta': 'En ruta',
+      'en_descargue': 'En descargue',
       'finalizado': 'Finalizado'
     };
     return labels[estado?.toLowerCase()] || estado;
@@ -198,7 +198,7 @@ export default function VehiculosAsignados() {
               <th style={{ width: '18%' }}>Placa</th>
               <th style={{ width: '18%' }}>Conductor</th>
               <th style={{ width: '14%' }}>Tipo</th>
-              <th style={{ width: '16%' }}>Estado</th>
+              <th style={{ width: '16%' }}>Estado del proceso</th>
               <th style={{ width: '18%' }}>Turno de Cargue</th>
               <th style={{ width: '16%', textAlign: 'center' }}>Acciones</th>
             </tr>
