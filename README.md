@@ -1201,6 +1201,75 @@ const [avanzandoEstado, setAvanzandoEstado] = useState(null);
 // Mantiene ID del vehículo en proceso para deshabilitar botón
 ```
 
+### Estados y Sincronización con Oferta
+
+**🔴 REGLA CRÍTICA:** El estado de la oferta se actualiza **automáticamente** basándose en el progreso de TODOS los vehículos asignados.
+
+**Lógica de actualización:**
+- La oferta avanza al siguiente estado cuando **TODOS** los vehículos han alcanzado o superado ese estado
+- No es necesario que todos estén en el mismo estado simultáneamente
+- Se evalúa el progreso acumulado, no el estado puntual
+
+**Ejemplo 1: Estados mixtos**
+```
+Vehículos:
+- V1: finalizado
+- V2: en_descargue
+- V3: en_ruta
+- V4: en_cargue
+
+Estado de oferta: ASIGNADA
+¿Por qué? Porque V4 aún está en "en_cargue", lo que significa que 
+NO TODOS han pasado por ese estado completamente.
+```
+
+**Ejemplo 2: Todos avanzados**
+```
+Vehículos:
+- V1: finalizado
+- V2: en_descargue
+- V3: en_ruta
+- V4: en_ruta
+
+Estado de oferta: EN PROCESO DE CARGUE
+¿Por qué? Ahora TODOS han salido de "en_cargue" (están en cargue o más avanzados).
+```
+
+**Ejemplo 3: Finalización completa**
+```
+Vehículos:
+- V1: finalizado
+- V2: finalizado
+- V3: finalizado
+- V4: finalizado
+
+Estado de oferta: FINALIZADA ✅
+Todos completaron el flujo operativo.
+```
+
+**Flujo de estados de oferta:**
+```
+SIN ASIGNAR 
+    ↓ (publicar)
+EN PROCESO DE ASIGNACIÓN 
+    ↓ (completar asignación)
+ASIGNADA 
+    ↓ (todos salieron de "asignado")
+EN PROCESO DE CARGUE 
+    ↓ (todos salieron de "en_cargue")
+EN CURSO 
+    ↓ (todos salieron de "en_ruta")
+EN PROCESO DE DESCARGUE 
+    ↓ (todos salieron de "en_descargue")
+FINALIZADA
+```
+
+**Actualización automática:**
+- ✅ Se ejecuta cada vez que un vehículo cambia de estado
+- ✅ El nuevo estado se persiste en la colección `ofertas`
+- ✅ Se registra en `activity_logs` para auditoría
+- ✅ La UI refleja el cambio inmediatamente sin refresh manual
+
 ### Avance Individual vs Grupal
 
 **❌ No implementado:** Avance de todos los vehículos simultáneamente
@@ -1211,14 +1280,7 @@ const [avanzandoEstado, setAvanzandoEstado] = useState(null);
 - Vehículo 1 puede estar "en_ruta"
 - Vehículo 2 puede estar "en_cargue"
 - Vehículo 3 puede estar "finalizado"
-
-### Estados Independientes
-
-**Importante:** El cambio de estado de vehículos **NO modifica automáticamente** el estado de la oferta.
-
-- Oferta mantiene su estado actual
-- Gestión de estado de oferta es independiente
-- Permite control granular del flujo operativo
+- **La oferta reflejará el estado mínimo común alcanzado por todos**
 
 ### Persistencia de Datos
 
@@ -1530,6 +1592,16 @@ Base URL: `/api`
 19. **Estados de vehículos**: 6 estados (disponible, asignado, en_ruta, en_cargue, en_descargue, mantenimiento).
 20. **Cambio automático**: Al finalizar oferta, vehículos vuelven a estado "disponible" automáticamente.
 21. **Tracking de tiempo**: Solo cuenta el tiempo en estado "disponible", no en otros estados.
+22. **🔴 CRÍTICO - Actualización automática del estado de oferta**: El estado de la oferta se actualiza automáticamente basándose en el progreso de TODOS los vehículos asignados.
+    - **Regla**: La oferta avanza al siguiente estado cuando TODOS los vehículos han alcanzado o superado ese estado.
+    - **No requiere que todos estén en el mismo estado simultáneamente**, solo que todos hayan pasado por ese nivel.
+    - **Flujo de estados de oferta**: SIN ASIGNAR → EN PROCESO DE ASIGNACIÓN → ASIGNADA → EN PROCESO DE CARGUE → EN CURSO → EN PROCESO DE DESCARGUE → FINALIZADA
+    - **Ejemplo**: Si hay 5 vehículos donde V1 está en "finalizado", V2 en "en_descargue", V3 en "en_ruta", V4 en "en_ruta", V5 en "en_cargue" → Estado oferta = "ASIGNADA" (porque V5 aún no ha salido de "en_cargue")
+    - **Ejemplo 2**: Si todos los vehículos están en "en_ruta" o más avanzados → Estado oferta = "EN CURSO"
+    - **Actualización**: Se ejecuta automáticamente cada vez que un vehículo cambia de estado mediante el endpoint `POST /api/vehiculos/{id}/avanzar-estado`
+    - **Persistencia**: El nuevo estado se guarda en la colección `ofertas` y se registra en `activity_logs`
+23. **Límite de asignación**: No se pueden asignar más vehículos de los requeridos. El sistema bloquea asignaciones cuando `vehiculos_asignados >= vehiculos_requeridos`
+24. **Estado "ASIGNADA"**: La oferta cambia automáticamente de "EN PROCESO DE ASIGNACIÓN" a "ASIGNADA" cuando se completa la cantidad de vehículos requeridos.
 
 ---
 
@@ -1809,7 +1881,7 @@ Variables de entorno:
 - ✅ Recarga automática de datos después de cambio
 - ✅ Registro completo en activity_logs
 - ✅ Persistencia total de datos (no se eliminan)
-- ✅ Estados de vehículos independientes del estado de oferta
+- ✅ **Estado de oferta se actualiza automáticamente** cuando TODOS los vehículos avanzan
 - ✅ Permite simular flujo operativo completo para pruebas
 
 #### **[BUG FIX CRÍTICO] Reactividad UI y Errores Backend (2026-04-17):**
