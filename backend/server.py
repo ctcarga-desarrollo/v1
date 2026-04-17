@@ -1660,6 +1660,44 @@ async def get_vehiculos_asignados(request: Request, oferta_id: str):
     }
 
 
+def calcular_estado_oferta_por_vehiculos(vehiculos_asignados: list) -> str:
+    """
+    Calcula el estado de la oferta basado en el estado de TODOS los vehículos.
+    Regla: La oferta avanza cuando TODOS los vehículos han pasado por ese estado.
+    
+    Estados de vehículos (flujo): asignado → en_cargue → en_ruta → en_descargue → finalizado
+    Estados de oferta: ASIGNADA → EN PROCESO DE CARGUE → EN CURSO → EN PROCESO DE DESCARGUE → FINALIZADA
+    """
+    if not vehiculos_asignados:
+        return "ASIGNADA"  # Sin vehículos, mantener estado inicial
+    
+    # Obtener todos los estados actuales
+    estados_actuales = [v.get("estado", "asignado").lower() for v in vehiculos_asignados]
+    
+    # Orden de estados de vehículos
+    FLUJO_ESTADOS = ["asignado", "en_cargue", "en_ruta", "en_descargue", "finalizado"]
+    
+    # Encontrar el estado "mínimo" (el que todos han alcanzado o superado)
+    # Si todos están en "finalizado" → FINALIZADA
+    if all(estado == "finalizado" for estado in estados_actuales):
+        return "FINALIZADA"
+    
+    # Si todos han pasado por "en_descargue" (están en descargue o finalizado)
+    if all(estado in ["en_descargue", "finalizado"] for estado in estados_actuales):
+        return "EN PROCESO DE DESCARGUE"
+    
+    # Si todos han pasado por "en_ruta" (están en ruta, descargue o finalizado)
+    if all(estado in ["en_ruta", "en_descargue", "finalizado"] for estado in estados_actuales):
+        return "EN CURSO"
+    
+    # Si todos han pasado por "en_cargue" (están en cargue, ruta, descargue o finalizado)
+    if all(estado in ["en_cargue", "en_ruta", "en_descargue", "finalizado"] for estado in estados_actuales):
+        return "EN PROCESO DE CARGUE"
+    
+    # Si hay al menos un vehículo aún en "asignado"
+    return "ASIGNADA"
+
+
 @api_router.post("/vehiculos/{vehiculo_id}/avanzar-estado")
 async def avanzar_estado_vehiculo(request: Request, vehiculo_id: str, data: dict):
     """
@@ -1724,6 +1762,30 @@ async def avanzar_estado_vehiculo(request: Request, vehiculo_id: str, data: dict
             }
         )
         
+        # ✅ ACTUALIZACIÓN AUTOMÁTICA DEL ESTADO DE LA OFERTA
+        # Obtener la asignación actualizada
+        asignacion_actualizada = await db.asignaciones_vehiculos.find_one(
+            {"oferta_id": oferta_id, "tenant_id": user["tenant_id"]},
+            {"_id": 0}
+        )
+        
+        if asignacion_actualizada:
+            vehiculos_asignados = asignacion_actualizada.get("vehiculos_asignados", [])
+            nuevo_estado_oferta = calcular_estado_oferta_por_vehiculos(vehiculos_asignados)
+            
+            # Actualizar estado de la oferta
+            await db.ofertas.update_one(
+                {"id": oferta_id, "tenant_id": user["tenant_id"]},
+                {
+                    "$set": {
+                        "estado": nuevo_estado_oferta,
+                        "fecha_ultima_actualizacion": datetime.now(timezone.utc)
+                    }
+                }
+            )
+            
+            logger.info(f"Estado de oferta {oferta_id} actualizado a: {nuevo_estado_oferta}")
+        
         # Registrar actividad
         await registrar_actividad(
             usuario=user,
@@ -1741,6 +1803,7 @@ async def avanzar_estado_vehiculo(request: Request, vehiculo_id: str, data: dict
             "vehiculo_id": vehiculo_id,
             "estado_anterior": estado_actual,
             "estado_nuevo": siguiente_estado,
+            "estado_oferta": nuevo_estado_oferta if asignacion_actualizada else None,
             "mensaje": f"Estado actualizado: {estado_actual} → {siguiente_estado}"
         }
     
@@ -1790,6 +1853,31 @@ async def avanzar_estado_vehiculo(request: Request, vehiculo_id: str, data: dict
             }
         )
         
+        # ✅ ACTUALIZACIÓN AUTOMÁTICA DEL ESTADO DE LA OFERTA
+        # Obtener la asignación actualizada
+        asignacion_actualizada = await db.asignaciones_vehiculos.find_one(
+            {"oferta_id": oferta_id, "tenant_id": user["tenant_id"]},
+            {"_id": 0}
+        )
+        
+        nuevo_estado_oferta = None
+        if asignacion_actualizada:
+            vehiculos_asignados = asignacion_actualizada.get("vehiculos_asignados", [])
+            nuevo_estado_oferta = calcular_estado_oferta_por_vehiculos(vehiculos_asignados)
+            
+            # Actualizar estado de la oferta
+            await db.ofertas.update_one(
+                {"id": oferta_id, "tenant_id": user["tenant_id"]},
+                {
+                    "$set": {
+                        "estado": nuevo_estado_oferta,
+                        "fecha_ultima_actualizacion": datetime.now(timezone.utc)
+                    }
+                }
+            )
+            
+            logger.info(f"Estado de oferta {oferta_id} actualizado a: {nuevo_estado_oferta}")
+        
         # Registrar actividad
         await registrar_actividad(
             usuario=user,
@@ -1808,6 +1896,7 @@ async def avanzar_estado_vehiculo(request: Request, vehiculo_id: str, data: dict
             "placa": vehiculo.get("placa"),
             "estado_anterior": estado_actual,
             "estado_nuevo": siguiente_estado,
+            "estado_oferta": nuevo_estado_oferta,
             "mensaje": f"Estado actualizado: {estado_actual} → {siguiente_estado}"
         }
 
