@@ -252,34 +252,59 @@ async def procesar_asignacion_vehiculo(vehiculo: dict, oferta: dict, etapa: str,
             "timestamp": datetime.now(timezone.utc)
         }
 
-async def ejecutar_asignacion_por_etapa(oferta: dict, etapa: str, tipo_propiedad: str, vehiculos_necesarios: int, ciclo: int) -> list:
+async def ejecutar_asignacion_por_etapa(oferta: dict, etapa: str, tipo_propiedad: str, vehiculos_necesarios: int, ciclo: int, vehiculos_ya_contactados: list) -> list:
     """
     Ejecuta la asignación de vehículos para una etapa específica.
+    Prioriza por tiempo en estado disponible y excluye vehículos ya contactados.
     """
     logger.info(f"Ejecutando etapa {etapa} (ciclo {ciclo}) para oferta {oferta.get('codigo_oferta')}")
     
-    # Obtener vehículos del tenant que cumplan el tipo de propiedad
+    # Obtener vehículos del tenant que cumplan el tipo de propiedad y estén disponibles
     vehiculos = await db.vehiculos.find({
         "tenant_id": oferta["tenant_id"],
-        "tipo_propiedad": tipo_propiedad
+        "tipo_propiedad": tipo_propiedad,
+        "estado": "disponible"  # Solo vehículos disponibles
     }).to_list(length=100)
     
-    # Filtrar vehículos que cumplan requisitos
+    # Filtrar vehículos que ya fueron contactados para esta oferta
+    vehiculos = [v for v in vehiculos if v["id"] not in vehiculos_ya_contactados]
+    
+    # Filtrar vehículos que cumplan requisitos técnicos
     vehiculos_validos = [v for v in vehiculos if vehiculo_cumple_requisitos(v, oferta.get("vehiculo", {}))]
     
-    logger.info(f"Vehículos válidos en etapa {etapa}: {len(vehiculos_validos)}")
+    # Ordenar por tiempo en estado disponible (más tiempo primero)
+    # Los vehículos sin fecha se consideran disponibles desde hace mucho tiempo
+    vehiculos_validos.sort(
+        key=lambda v: v.get("tiempo_disponible_desde", datetime.min.replace(tzinfo=timezone.utc)),
+        reverse=False  # Más antiguo (menor timestamp) primero
+    )
+    
+    logger.info(f"Vehículos válidos en etapa {etapa}: {len(vehiculos_validos)} (ordenados por tiempo de espera)")
     
     # Si no hay vehículos válidos, retornar lista vacía
     if not vehiculos_validos:
         return []
     
     # Limitar la cantidad de vehículos a procesar
-    vehiculos_a_procesar = vehiculos_validos[:vehiculos_necesarios]
+    vehiculos_a_procesar = vehiculos_validos[:vehiculos_necesarios * 2]  # Procesar el doble por si hay rechazos
     
     # Procesar cada vehículo
     resultados = []
     for vehiculo in vehiculos_a_procesar:
+        # Calcular tiempo de espera en horas
+        tiempo_espera_horas = 0
+        if vehiculo.get("tiempo_disponible_desde"):
+            try:
+                tiempo_disponible = datetime.fromisoformat(str(vehiculo["tiempo_disponible_desde"]).replace('Z', '+00:00'))
+                tiempo_espera = datetime.now(timezone.utc) - tiempo_disponible
+                tiempo_espera_horas = tiempo_espera.total_seconds() / 3600
+            except Exception:
+                tiempo_espera_horas = 0
+        
+        logger.info(f"Procesando vehículo {vehiculo['placa']} - Tiempo de espera: {tiempo_espera_horas:.1f}h")
+        
         resultado = await procesar_asignacion_vehiculo(vehiculo, oferta, etapa, ciclo)
+        resultado["tiempo_espera_horas"] = round(tiempo_espera_horas, 2)
         resultados.append(resultado)
         
         # Si ya tenemos suficientes asignados, detener
@@ -302,6 +327,7 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
     """
     Proceso completo de asignación de vehículos a una oferta.
     Ejecuta las 3 etapas: Flota propia → Terceros vinculados → Terceros
+    Prioriza por tiempo de espera y no repite contactos.
     """
     try:
         # Obtener la oferta
@@ -330,6 +356,7 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
             "vehiculos_objetivo": vehiculos_objetivo,
             "vehiculos_asignados": [],
             "vehiculos_rechazados": [],
+            "vehiculos_contactados": [],  # Lista de IDs de vehículos ya contactados
             "etapa_actual": "FLOTA_PROPIA",
             "ciclo_actual": 1,
             "alertas": [],
@@ -345,6 +372,7 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
         max_ciclos = 3
         asignados = []
         rechazados = []
+        vehiculos_ya_contactados = []  # IDs de vehículos que ya vieron esta oferta
         
         for ciclo in range(1, max_ciclos + 1):
             logger.info(f"Iniciando ciclo {ciclo} para oferta {oferta.get('codigo_oferta')}")
@@ -358,11 +386,21 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
             
             # ETAPA 1: Flota propia
             resultados_propia = await ejecutar_asignacion_por_etapa(
-                oferta, "FLOTA_PROPIA", "flota_propia", vehiculos_restantes, ciclo
+                oferta, "FLOTA_PROPIA", "flota_propia", vehiculos_restantes, ciclo, vehiculos_ya_contactados
             )
             for res in resultados_propia:
+                vehiculos_ya_contactados.append(res["vehiculo_id"])
                 if res["estado"] == "ASIGNADO":
                     asignados.append(res)
+                    # Cambiar estado del vehículo a "asignado"
+                    await db.vehiculos.update_one(
+                        {"id": res["vehiculo_id"]},
+                        {"$set": {
+                            "estado": "asignado",
+                            "oferta_asignada": oferta_id,
+                            "fecha_asignacion": datetime.now(timezone.utc)
+                        }}
+                    )
                 else:
                     rechazados.append(res)
             
@@ -373,11 +411,21 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
             
             # ETAPA 2: Terceros vinculados
             resultados_vinculados = await ejecutar_asignacion_por_etapa(
-                oferta, "TERCEROS_VINCULADOS", "tercero_vinculado", vehiculos_restantes, ciclo
+                oferta, "TERCEROS_VINCULADOS", "tercero_vinculado", vehiculos_restantes, ciclo, vehiculos_ya_contactados
             )
             for res in resultados_vinculados:
+                vehiculos_ya_contactados.append(res["vehiculo_id"])
                 if res["estado"] == "ASIGNADO":
                     asignados.append(res)
+                    # Cambiar estado del vehículo a "asignado"
+                    await db.vehiculos.update_one(
+                        {"id": res["vehiculo_id"]},
+                        {"$set": {
+                            "estado": "asignado",
+                            "oferta_asignada": oferta_id,
+                            "fecha_asignacion": datetime.now(timezone.utc)
+                        }}
+                    )
                 else:
                     rechazados.append(res)
             
@@ -401,6 +449,7 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
                             "tipo_propiedad": "tercero_externo",
                             "estado": "ASIGNADO",
                             "distancia_km": round(random.uniform(5, 18), 2),
+                            "tiempo_espera_horas": 0,
                             "etapa": "TERCEROS",
                             "ciclo": ciclo,
                             "timestamp": datetime.now(timezone.utc)
@@ -442,6 +491,7 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
                 "estado_asignacion": estado_final,
                 "vehiculos_asignados": asignados,
                 "vehiculos_rechazados": rechazados,
+                "vehiculos_contactados": vehiculos_ya_contactados,
                 "porcentaje_completado": porcentaje,
                 "alertas": alertas,
                 "fecha_ultima_actualizacion": datetime.now(timezone.utc),
@@ -463,6 +513,7 @@ async def proceso_asignacion_vehiculos(oferta_id: str, tenant_id: str):
         logger.info(f"Flota propia: {len([a for a in asignados if a['tipo_propiedad'] == 'flota_propia'])}")
         logger.info(f"Terceros vinculados: {len([a for a in asignados if a['tipo_propiedad'] == 'tercero_vinculado'])}")
         logger.info(f"Terceros externos: {len([a for a in asignados if a['tipo_propiedad'] == 'tercero_externo'])}")
+        logger.info(f"Total vehículos contactados (no repetidos): {len(vehiculos_ya_contactados)}")
         
     except Exception as e:
         logger.error(f"Error en proceso de asignación: {str(e)}")
@@ -843,7 +894,20 @@ async def create_vehiculo(request: Request, data: dict):
     existing = await db.vehiculos.find_one({"placa": placa, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if existing:
         raise HTTPException(status_code=400, detail="Ya existe un vehículo con esta placa")
-    doc = {**data, "id": str(uuid.uuid4()), "placa": placa, "tenant_id": user["tenant_id"], "created_at": now, "updated_at": now}
+    
+    # Inicializar campos de estado
+    doc = {
+        **data,
+        "id": str(uuid.uuid4()),
+        "placa": placa,
+        "tenant_id": user["tenant_id"],
+        "estado": "disponible",  # Estado inicial
+        "tiempo_disponible_desde": datetime.now(timezone.utc),
+        "fecha_cambio_estado": datetime.now(timezone.utc),
+        "oferta_asignada": None,
+        "created_at": now,
+        "updated_at": now
+    }
     await db.vehiculos.insert_one(doc)
     
     # Registrar actividad
@@ -854,7 +918,7 @@ async def create_vehiculo(request: Request, data: dict):
         registro_id=doc["id"],
         detalles=f"Creación de vehículo {placa} - Marca: {data.get('marca', 'N/A')} {data.get('linea', '')}",
         ip_address=get_client_ip(request),
-        datos_nuevos={"placa": placa, "marca": data.get("marca"), "tipo_propiedad": data.get("tipo_propiedad")}
+        datos_nuevos={"placa": placa, "marca": data.get("marca"), "tipo_propiedad": data.get("tipo_propiedad"), "estado": "disponible"}
     )
     
     return await db.vehiculos.find_one({"id": doc["id"]}, {"_id": 0})
@@ -1179,8 +1243,134 @@ async def get_estado_asignacion(request: Request, oferta_id: str):
     
     if not asignacion:
         raise HTTPException(status_code=404, detail="No se encontró proceso de asignación para esta oferta")
+
+
+@api_router.post("/ofertas/{oferta_id}/finalizar")
+async def finalizar_oferta(request: Request, oferta_id: str):
+    """
+    Finaliza una oferta y libera los vehículos asignados (vuelven a estado disponible).
+    """
+    user = await get_current_user(request)
+    check_role(user, ROLE_WRITE)
     
-    return asignacion
+    # Verificar que la oferta existe
+    oferta = await db.ofertas.find_one({"id": oferta_id, "tenant_id": user["tenant_id"]})
+    if not oferta:
+        raise HTTPException(status_code=404, detail="Oferta no encontrada")
+    
+    # Obtener asignación de vehículos
+    asignacion = await db.asignaciones_vehiculos.find_one({"oferta_id": oferta_id, "tenant_id": user["tenant_id"]})
+    
+    # Cambiar estado de la oferta a FINALIZADA
+    await db.ofertas.update_one(
+        {"id": oferta_id},
+        {"$set": {
+            "estado": "FINALIZADA",
+            "fecha_finalizacion": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    # Liberar vehículos asignados (cambiar a disponible)
+    vehiculos_liberados = 0
+    if asignacion and asignacion.get("vehiculos_asignados"):
+        for vehiculo_asignado in asignacion["vehiculos_asignados"]:
+            vehiculo_id = vehiculo_asignado.get("vehiculo_id")
+            # Solo procesar vehículos reales (no terceros externos)
+            if vehiculo_id and not vehiculo_id.startswith("TERCERO_"):
+                result = await db.vehiculos.update_one(
+                    {"id": vehiculo_id, "tenant_id": user["tenant_id"]},
+                    {"$set": {
+                        "estado": "disponible",
+                        "tiempo_disponible_desde": datetime.now(timezone.utc),
+                        "oferta_asignada": None,
+                        "fecha_asignacion": None
+                    }}
+                )
+                if result.modified_count > 0:
+                    vehiculos_liberados += 1
+    
+    # Registrar actividad
+    await registrar_actividad(
+        usuario=user,
+        accion="CAMBIO_ESTADO",
+        modulo="ofertas",
+        registro_id=oferta_id,
+        detalles=f"Finalización de oferta {oferta.get('codigo_oferta', 'N/A')} - {vehiculos_liberados} vehículos liberados",
+        ip_address=get_client_ip(request),
+        datos_nuevos={"estado": "FINALIZADA", "vehiculos_liberados": vehiculos_liberados}
+    )
+    
+    logger.info(f"Oferta {oferta.get('codigo_oferta')} finalizada. {vehiculos_liberados} vehículos liberados.")
+    
+    return {
+        "message": "Oferta finalizada exitosamente.",
+        "oferta_id": oferta_id,
+        "estado": "FINALIZADA",
+        "vehiculos_liberados": vehiculos_liberados
+    }
+
+@api_router.post("/vehiculos/{vehiculo_id}/cambiar-estado")
+async def cambiar_estado_vehiculo(request: Request, vehiculo_id: str, data: dict):
+    """
+    Cambia el estado de un vehículo.
+    Estados válidos: disponible, asignado, en_ruta, en_cargue, en_descargue, mantenimiento
+    """
+    user = await get_current_user(request)
+    check_role(user, ROLE_WRITE)
+    
+    nuevo_estado = data.get("estado")
+    estados_validos = ["disponible", "asignado", "en_ruta", "en_cargue", "en_descargue", "mantenimiento"]
+    
+    if nuevo_estado not in estados_validos:
+        raise HTTPException(status_code=400, detail=f"Estado inválido. Estados válidos: {', '.join(estados_validos)}")
+    
+    # Obtener vehículo actual
+    vehiculo = await db.vehiculos.find_one({"id": vehiculo_id, "tenant_id": user["tenant_id"]})
+    if not vehiculo:
+        raise HTTPException(status_code=404, detail="Vehículo no encontrado")
+    
+    estado_anterior = vehiculo.get("estado", "desconocido")
+    
+    # Preparar actualización
+    update_data = {
+        "estado": nuevo_estado,
+        "fecha_cambio_estado": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Si cambia a disponible, registrar timestamp
+    if nuevo_estado == "disponible":
+        update_data["tiempo_disponible_desde"] = datetime.now(timezone.utc)
+        update_data["oferta_asignada"] = None
+    
+    # Actualizar vehículo
+    await db.vehiculos.update_one(
+        {"id": vehiculo_id, "tenant_id": user["tenant_id"]},
+        {"$set": update_data}
+    )
+    
+    # Registrar actividad
+    await registrar_actividad(
+        usuario=user,
+        accion="CAMBIO_ESTADO",
+        modulo="vehiculos",
+        registro_id=vehiculo_id,
+        detalles=f"Cambio de estado del vehículo {vehiculo.get('placa', 'N/A')}: {estado_anterior} → {nuevo_estado}",
+        ip_address=get_client_ip(request),
+        datos_anteriores={"estado": estado_anterior},
+        datos_nuevos={"estado": nuevo_estado}
+    )
+    
+    logger.info(f"Vehículo {vehiculo.get('placa')} cambió de estado: {estado_anterior} → {nuevo_estado}")
+    
+    return {
+        "message": "Estado actualizado exitosamente",
+        "vehiculo_id": vehiculo_id,
+        "placa": vehiculo.get("placa"),
+        "estado_anterior": estado_anterior,
+        "estado_nuevo": nuevo_estado
+    }
 
 @api_router.get("/activity-logs")
 async def get_activity_logs(

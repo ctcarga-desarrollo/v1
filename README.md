@@ -317,6 +317,29 @@ Un vehículo debe cumplir:
 - ✅ Carrocería coincide
 - ✅ Tipo de carga coincide
 - ✅ Ubicado a menos de 20km del sitio de cargue
+- ✅ **Estado "disponible"** (no asignado a otra oferta)
+
+#### Prioridad por Tiempo de Espera
+**Nuevo:** El sistema prioriza vehículos por su tiempo en estado disponible:
+- ✅ Se ordenan por `tiempo_disponible_desde` (más antiguo primero)
+- ✅ El tiempo **NO** cuenta desde el login del vehículo
+- ✅ El tiempo **SOLO** cuenta cuando está en estado "disponible"
+- ✅ Si estuvo en "en_ruta", "en_cargue" o "en_descargue", ese tiempo no cuenta
+- ✅ Al volver a "disponible", se registra nuevo timestamp
+- ✅ Cada nueva oferta reinicia la priorización
+
+**Ejemplo:**
+```
+Vehículo A: Disponible hace 3 horas → Prioridad 1
+Vehículo B: Disponible hace 1 hora  → Prioridad 2
+Vehículo C: Logeado hace 5 horas pero en ruta hace 30 min, disponible hace 10 min → Prioridad 3
+```
+
+#### Regla de No Repetición
+**Nuevo:** Si un vehículo rechaza o no responde:
+- ✅ Se guarda en lista `vehiculos_contactados` de la oferta
+- ✅ No se vuelve a contactar para esa misma oferta en ciclos posteriores
+- ✅ Cada oferta nueva reinicia la lista (oferta diferente = nuevo intento)
 
 #### Simulación de Respuesta
 Cada vehículo:
@@ -346,6 +369,22 @@ Esto genera resultados realistas y permite probar diferentes escenarios.
 | PARCIAL | 50% o más asignados |
 | INSUFICIENTE | Menos del 50% asignados |
 | ERROR | Error en el proceso |
+
+### Estados de Vehículos
+
+| Estado | Descripción | Siguiente Estado |
+|---|---|---|
+| **disponible** | Vehículo libre, puede recibir ofertas | asignado |
+| **asignado** | Vehículo asignado a una oferta | en_ruta |
+| **en_ruta** | En trayecto hacia cargue/descargue | en_cargue / en_descargue |
+| **en_cargue** | Cargando mercancía | en_ruta |
+| **en_descargue** | Descargando mercancía | disponible |
+| **mantenimiento** | Fuera de servicio | disponible |
+
+**Cambios Automáticos:**
+- ✅ Al asignar vehículo → estado cambia a "asignado"
+- ✅ Al finalizar oferta → vehículos vuelven a "disponible"
+- ✅ Al cambiar a "disponible" → se registra `tiempo_disponible_desde`
 
 ### Sistema de Alertas
 
@@ -468,6 +507,7 @@ Base URL: `/api`
 | GET | `/api/ofertas/{id}` | Todos | Detalle de oferta | No |
 | POST | `/api/ofertas` | ADMIN, OPERADOR | Crear oferta | ✅ CREAR |
 | POST | `/api/ofertas/{id}/publicar` | ADMIN, OPERADOR | Publicar oferta e iniciar asignación | ✅ CAMBIO_ESTADO |
+| POST | `/api/ofertas/{id}/finalizar` | ADMIN, OPERADOR | Finalizar oferta y liberar vehículos | ✅ CAMBIO_ESTADO |
 | GET | `/api/ofertas/{id}/asignacion` | Todos | Obtener estado de asignación de vehículos | No |
 | DELETE | `/api/ofertas/{id}` | ADMIN, OPERADOR | Eliminar oferta | ✅ ELIMINAR |
 
@@ -489,6 +529,7 @@ Base URL: `/api`
 | GET | `/api/vehiculos` | Todos | Listar vehículos del tenant | No |
 | POST | `/api/vehiculos` | ADMIN, OPERADOR | Registrar vehículo | ✅ CREAR |
 | PUT | `/api/vehiculos/{id}` | ADMIN, OPERADOR | Actualizar vehículo | ✅ ACTUALIZAR |
+| POST | `/api/vehiculos/{id}/cambiar-estado` | ADMIN, OPERADOR | Cambiar estado del vehículo | ✅ CAMBIO_ESTADO |
 | DELETE | `/api/vehiculos/{id}` | ADMIN, OPERADOR | Eliminar vehículo | ✅ ELIMINAR |
 | POST | `/api/vehiculos/{id}/vincular-remolque` | ADMIN, OPERADOR | Vincular remolque | ✅ CAMBIO_ESTADO |
 | POST | `/api/vehiculos/{id}/desvincular-remolque` | ADMIN, OPERADOR | Desvincular | ✅ CAMBIO_ESTADO |
@@ -554,6 +595,11 @@ Base URL: `/api`
 {
   "id": "uuid", "tenant_id": "uuid",
   "tipo_propiedad": "flota_propia | tercero_vinculado",
+  "estado": "disponible | asignado | en_ruta | en_cargue | en_descargue | mantenimiento",
+  "tiempo_disponible_desde": "ISO 8601",
+  "fecha_cambio_estado": "ISO 8601",
+  "oferta_asignada": "uuid | null",
+  "fecha_asignacion": "ISO 8601 | null",
   "placa": "ABC123", "marca": "Kenworth", 
   "configuracion": "Tractocamión", "tipo_vehiculo": "C3S3",
   "carroceria": "Furgón", "tipo_carga": "Carga General",
@@ -614,6 +660,7 @@ Base URL: `/api`
       "marca": "KENWORTH", "linea": "T800",
       "tipo_propiedad": "flota_propia | tercero_vinculado | tercero_externo",
       "estado": "ASIGNADO", "distancia_km": 12.5,
+      "tiempo_espera_horas": 3.5,
       "etapa": "FLOTA_PROPIA | TERCEROS_VINCULADOS | TERCEROS",
       "ciclo": 1, "timestamp": "ISO 8601"
     }
@@ -626,6 +673,7 @@ Base URL: `/api`
       "etapa": "TERCEROS_VINCULADOS", "ciclo": 1, "timestamp": "ISO 8601"
     }
   ],
+  "vehiculos_contactados": ["uuid1", "uuid2", "uuid3"],
   "etapa_actual": "string", "ciclo_actual": 1, "ciclos_ejecutados": 1,
   "alertas": [], "fecha_cargue": "ISO 8601",
   "fecha_inicio_asignacion": "ISO 8601", "fecha_ultima_actualizacion": "ISO 8601",
@@ -652,6 +700,12 @@ Base URL: `/api`
 13. **Radio de asignación**: Solo vehículos a menos de 20km del sitio de cargue.
 14. **Tiempo de respuesta**: Vehículos tienen 5 minutos para aceptar/rechazar (simulado).
 15. **Alerta de asignación**: Si faltando 5 horas no se asignó 50%, se genera alerta crítica.
+16. **Prioridad por tiempo de espera**: Vehículos ordenados por `tiempo_disponible_desde` (más antiguo primero).
+17. **No repetición**: Vehículo que rechaza una oferta no recibe la misma oferta en ciclos posteriores.
+18. **Reinicio por nueva oferta**: Cada oferta nueva reinicia la prioridad y lista de contactados.
+19. **Estados de vehículos**: 6 estados (disponible, asignado, en_ruta, en_cargue, en_descargue, mantenimiento).
+20. **Cambio automático**: Al finalizar oferta, vehículos vuelven a estado "disponible" automáticamente.
+21. **Tracking de tiempo**: Solo cuenta el tiempo en estado "disponible", no en otros estados.
 
 ---
 
@@ -809,10 +863,21 @@ Variables de entorno:
 - ✅ Sistema de alertas (5 horas antes, < 50% asignado)
 - ✅ Colección `asignaciones_vehiculos` con tracking completo
 - ✅ Endpoint POST `/api/ofertas/{id}/publicar`
+- ✅ Endpoint POST `/api/ofertas/{id}/finalizar`
 - ✅ Endpoint GET `/api/ofertas/{id}/asignacion`
+- ✅ Endpoint POST `/api/vehiculos/{id}/cambiar-estado`
 - ✅ Cambio de estado automático a "EN PROCESO DE ASIGNACIÓN"
-- ✅ Logging de publicación de ofertas
+- ✅ Logging de publicación y finalización de ofertas
 - ✅ Proceso asíncrono en segundo plano
+- ✅ **Prioridad por tiempo de espera en estado disponible**
+- ✅ **Ordenamiento por `tiempo_disponible_desde` (más antiguo primero)**
+- ✅ **Regla de no repetición: vehículos contactados no se reenvían**
+- ✅ **Tracking de vehículos contactados por oferta (`vehiculos_contactados`)**
+- ✅ **Estados de vehículos: disponible, asignado, en_ruta, en_cargue, en_descargue, mantenimiento**
+- ✅ **Cambio automático a "disponible" al finalizar oferta**
+- ✅ **Cambio automático a "asignado" al aceptar oferta**
+- ✅ **Registro de `tiempo_disponible_desde` al cambiar a disponible**
+- ✅ **Vehículos nuevos se crean con estado "disponible" por defecto**
 
 ---
 
@@ -826,5 +891,5 @@ Para reportar problemas, solicitar funcionalidades o contribuir al proyecto:
 ---
 
 **Última actualización:** 2025-07-15  
-**Versión:** 1.3.0  
+**Versión:** 1.4.0  
 **Estado:** ✅ Producción
