@@ -602,8 +602,151 @@ Resultado:
 3. **Reasignación**: Cambio de turno si un vehículo cancela
 4. **Check-in**: QR code para registro de llegada al sitio
 
+---
 
+## Vista de Vehículos Asignados
 
+### Descripción
+Interfaz visual que muestra en tiempo real el estado de todos los vehículos asignados a una oferta, incluyendo su turno de cargue, estado del proceso y datos de contacto.
+
+### Acceso
+Desde el módulo de **Ofertas**, en la columna de acciones, aparece el botón **"Vehículos asignados"** (icono de camión azul) para ofertas que han sido publicadas.
+
+### Columnas de la Tabla
+
+1. **Placa del vehículo**
+   - Placa del vehículo
+   - Marca y línea
+
+2. **Nombre del conductor**
+   - Nombre completo
+   - Teléfono de contacto
+
+3. **Tipo de vehículo** (con badge de color)
+   - 🟢 **Flota propia**: Verde/Emerald
+   - 🔵 **Tercero vinculado**: Azul/Blue
+   - 🟠 **Tercero**: Naranja/Orange
+
+4. **Estado del proceso** (con semáforo)
+   - Asignado
+   - En cargue
+   - En ruta
+   - En descargue
+   - Finalizado
+   - **Semáforo visual**:
+     - 🟢 Verde: Dentro del tiempo estimado
+     - 🔴 Rojo: Ha superado el tiempo estimado
+
+5. **Turno de cargue asignado**
+   - Número de turno
+   - Hora programada de inicio
+
+6. **Acciones**
+   - 📄 **Ver documentación**: Licencia, SOAT, técnico-mecánica
+   - 📍 **Ver tracking GPS**: Ubicación actual (simulado)
+   - 📞 **Ver contacto**: Datos del conductor y propietario
+
+### Lógica del Semáforo
+
+El semáforo evalúa el tiempo transcurrido vs el tiempo estimado **según el estado actual**:
+
+| Estado | Tiempo Estimado | Evaluación |
+|--------|----------------|------------|
+| En cargue | `info_cargue.tiempoEstimado` | Verde si tiempo ≤ estimado |
+| En ruta | 180 minutos (simulado) | Verde si tiempo ≤ estimado |
+| En descargue | 45 minutos (simulado) | Verde si tiempo ≤ estimado |
+
+**Cálculo:**
+- Tiempo transcurrido = `Ahora - fecha_cambio_estado`
+- Si `tiempo_transcurrido > tiempo_estimado` → 🔴 Rojo
+- Si `tiempo_transcurrido ≤ tiempo_estimado` → 🟢 Verde
+
+### Datos Mostrados
+
+**Información real (de la base de datos):**
+- Placa, marca, línea
+- Tipo de propiedad
+- Estado actual
+- Turno asignado y hora de cargue
+- Timestamps de asignación y cambio de estado
+
+**Información simulada (estructura lista para datos reales):**
+- Nombre del conductor
+- Teléfono y email del conductor
+- Datos del propietario
+- Documentación
+- Tracking GPS
+- Tiempos estimados de ruta y descargue
+
+### Estructura de Datos
+
+El endpoint `/api/ofertas/{id}/vehiculos-asignados` retorna:
+
+```json
+{
+  "oferta_id": "...",
+  "oferta_codigo": "...",
+  "estado_asignacion": "COMPLETADA",
+  "vehiculos": [
+    {
+      "vehiculo_id": "...",
+      "placa": "ABC123",
+      "tipo_propiedad": "flota_propia",
+      "estado": "en_cargue",
+      "conductor": {
+        "nombre": "Juan Pérez",
+        "telefono": "+57 300 123 4567",
+        "email": "juan@empresa.com"
+      },
+      "turno": {
+        "numero": 1,
+        "hora_inicio": "2025-01-20T08:00:00",
+        "hora_fin": "2025-01-20T09:10:00"
+      },
+      "timestamps": {
+        "fecha_cambio_estado": "2025-01-20T08:05:00"
+      },
+      "tiempos_estimados": {
+        "cargue": 60,
+        "ruta": 180,
+        "descargue": 45
+      }
+    }
+  ]
+}
+```
+
+### Modales de Información
+
+#### 1. Modal de Documentación
+Muestra documentos del vehículo:
+- Licencia de conducción
+- SOAT
+- Revisión técnico-mecánica
+- Estado de vigencia (simulado)
+
+#### 2. Modal de Tracking GPS
+Muestra ubicación del vehículo:
+- Coordenadas GPS (simulado)
+- Estado actual
+- Última actualización
+- Nota: Mapa interactivo próximamente
+
+#### 3. Modal de Contacto
+Muestra datos de contacto:
+- **Conductor**: Nombre, teléfono, email
+- **Propietario**: Nombre/Empresa, teléfono, email
+
+### Próximas Mejoras
+
+1. **GPS en tiempo real**: Integración con dispositivos GPS
+2. **Documentos reales**: Upload y gestión de documentos
+3. **Actualización automática**: WebSockets para refrescar estado sin recargar
+4. **Notificaciones**: Alertas cuando un vehículo se retrasa
+5. **Timeline visual**: Vista de línea de tiempo de turnos
+6. **Exportar a PDF**: Generar reporte de vehículos asignados
+
+---
 
 ## API REST
 
@@ -626,6 +769,7 @@ Base URL: `/api`
 | POST | `/api/ofertas/{id}/publicar` | ADMIN, OPERADOR | Publicar oferta e iniciar asignación | ✅ CAMBIO_ESTADO |
 | POST | `/api/ofertas/{id}/finalizar` | ADMIN, OPERADOR | Finalizar oferta y liberar vehículos | ✅ CAMBIO_ESTADO |
 | GET | `/api/ofertas/{id}/asignacion` | Todos | Obtener estado de asignación de vehículos | No |
+| GET | `/api/ofertas/{id}/vehiculos-asignados` | Todos | Obtener lista detallada de vehículos asignados con turnos | No |
 | DELETE | `/api/ofertas/{id}` | ADMIN, OPERADOR | Eliminar oferta | ✅ ELIMINAR |
 
 ### Estadísticas
@@ -1008,6 +1152,19 @@ Variables de entorno:
 - ✅ Funciones: `calcular_turnos_cargue()` y `asignar_vehiculo_a_turno()`
 - ✅ Soporte para múltiples vehículos y configuraciones flexibles
 
+#### **Vista de Vehículos Asignados:**
+- ✅ Nuevo endpoint `GET /api/ofertas/{id}/vehiculos-asignados`
+- ✅ Botón "Vehículos asignados" en tabla de ofertas (solo para ofertas publicadas)
+- ✅ Componente `VehiculosAsignados.jsx` con tabla completa
+- ✅ Columnas: Placa, Conductor, Tipo, Estado, Turno de cargue, Acciones
+- ✅ Identificación visual por tipo de vehículo con badges de colores
+- ✅ Semáforo de estado por proceso (verde/rojo según tiempo estimado)
+- ✅ Lógica de semáforo independiente por estado (en_cargue/en_ruta/en_descargue)
+- ✅ 3 modales de acciones: Documentación, GPS tracking, Contacto
+- ✅ Integración completa con datos reales de turnos y asignaciones
+- ✅ Estructura preparada para datos reales de conductores y GPS
+- ✅ Ruta protegida: `/ofertas/:id/vehiculos-asignados`
+
 ---
 
 ## Soporte y Contacto
@@ -1020,5 +1177,5 @@ Para reportar problemas, solicitar funcionalidades o contribuir al proyecto:
 ---
 
 **Última actualización:** 2025-12-17  
-**Versión:** 1.5.0  
+**Versión:** 1.6.0  
 **Estado:** ✅ Producción

@@ -1403,6 +1403,132 @@ async def get_estado_asignacion(request: Request, oferta_id: str):
     
     if not asignacion:
         raise HTTPException(status_code=404, detail="No se encontró proceso de asignación para esta oferta")
+    
+    return asignacion
+
+@api_router.get("/ofertas/{oferta_id}/vehiculos-asignados")
+async def get_vehiculos_asignados(request: Request, oferta_id: str):
+    """
+    Obtiene la lista detallada de vehículos asignados a una oferta.
+    Incluye información del vehículo, conductor, turno, estado y contacto.
+    """
+    user = await get_current_user(request)
+    check_role(user, ROLE_ALL)
+    
+    # Obtener la asignación de la oferta
+    asignacion = await db.asignaciones_vehiculos.find_one(
+        {"oferta_id": oferta_id, "tenant_id": user["tenant_id"]},
+        {"_id": 0}
+    )
+    
+    if not asignacion:
+        raise HTTPException(status_code=404, detail="No se encontró asignación para esta oferta")
+    
+    # Obtener la oferta para tiempos estimados
+    oferta = await db.ofertas.find_one({"id": oferta_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    
+    vehiculos_asignados = asignacion.get("vehiculos_asignados", [])
+    turnos_cargue = asignacion.get("turnos_cargue", [])
+    
+    # Crear mapa de turnos para acceso rápido
+    turnos_map = {turno["numero_turno"]: turno for turno in turnos_cargue}
+    
+    # Enriquecer datos de cada vehículo
+    vehiculos_detallados = []
+    
+    for veh_asignado in vehiculos_asignados:
+        vehiculo_id = veh_asignado.get("vehiculo_id")
+        
+        # Si es un tercero externo (no tiene registro en DB)
+        if vehiculo_id and vehiculo_id.startswith("TERCERO_"):
+            # Datos simulados para terceros externos
+            vehiculo_info = {
+                "id": vehiculo_id,
+                "placa": veh_asignado.get("placa"),
+                "tipo_propiedad": "tercero_externo",
+                "estado": veh_asignado.get("estado", "asignado").lower(),
+                "marca": veh_asignado.get("marca", "N/A"),
+                "linea": veh_asignado.get("linea", "N/A"),
+                "conductor": {
+                    "nombre": f"Conductor Externo {vehiculo_id[-4:]}",
+                    "telefono": f"+57 300 {vehiculo_id[-7:][:3]} {vehiculo_id[-4:]}",
+                    "email": f"conductor{vehiculo_id[-4:]}@externo.com"
+                },
+                "propietario": {
+                    "nombre": "Empresa Externa S.A.S.",
+                    "telefono": "+57 300 123 4567",
+                    "email": "contacto@externo.com"
+                }
+            }
+        else:
+            # Buscar vehículo en la base de datos
+            vehiculo = await db.vehiculos.find_one({"id": vehiculo_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+            
+            if not vehiculo:
+                continue
+            
+            # Datos del conductor (simulados por ahora, estructura lista para datos reales)
+            vehiculo_info = {
+                **vehiculo,
+                "conductor": vehiculo.get("conductor", {
+                    "nombre": f"Conductor {vehiculo.get('placa', 'N/A')}",
+                    "telefono": vehiculo.get("telefono_conductor", "+57 300 123 4567"),
+                    "email": vehiculo.get("email_conductor", f"conductor@{vehiculo.get('placa', 'na').lower()}.com")
+                }),
+                "propietario": vehiculo.get("propietario_info", {
+                    "nombre": vehiculo.get("propietario", "Propietario N/A"),
+                    "telefono": vehiculo.get("telefono_propietario", "+57 300 765 4321"),
+                    "email": vehiculo.get("email_propietario", "propietario@empresa.com")
+                })
+            }
+        
+        # Obtener información del turno
+        turno_num = veh_asignado.get("turno_cargue")
+        turno_info = turnos_map.get(turno_num, {}) if turno_num else {}
+        
+        # Construir objeto detallado
+        vehiculo_detallado = {
+            "vehiculo_id": vehiculo_id,
+            "placa": veh_asignado.get("placa"),
+            "marca": vehiculo_info.get("marca", "N/A"),
+            "linea": vehiculo_info.get("linea", "N/A"),
+            "tipo_propiedad": veh_asignado.get("tipo_propiedad", vehiculo_info.get("tipo_propiedad", "desconocido")),
+            "estado": vehiculo_info.get("estado", "asignado"),
+            "conductor": vehiculo_info.get("conductor"),
+            "propietario": vehiculo_info.get("propietario"),
+            "turno": {
+                "numero": turno_num,
+                "hora_inicio": turno_info.get("hora_inicio"),
+                "hora_fin": turno_info.get("hora_fin")
+            },
+            "timestamps": {
+                "asignacion": veh_asignado.get("timestamp"),
+                "fecha_asignacion": vehiculo_info.get("fecha_asignacion"),
+                "fecha_cambio_estado": vehiculo_info.get("fecha_cambio_estado")
+            },
+            "tiempos_estimados": {
+                "cargue": oferta.get("info_cargue", {}).get("tiempoEstimado", 60),  # mins
+                "ruta": 180,  # mins (simulado, puede venir de la oferta más adelante)
+                "descargue": 45  # mins (simulado)
+            },
+            "etapa": veh_asignado.get("etapa", "DESCONOCIDO"),
+            "distancia_km": veh_asignado.get("distancia_km"),
+            "tiempo_espera_horas": veh_asignado.get("tiempo_espera_horas", 0)
+        }
+        
+        vehiculos_detallados.append(vehiculo_detallado)
+    
+    return {
+        "oferta_id": oferta_id,
+        "oferta_codigo": asignacion.get("oferta_codigo"),
+        "estado_asignacion": asignacion.get("estado_asignacion"),
+        "vehiculos": vehiculos_detallados,
+        "resumen": {
+            "total_asignados": len(vehiculos_detallados),
+            "total_turnos": len(turnos_cargue),
+            "porcentaje_completado": asignacion.get("porcentaje_completado", 0)
+        }
+    }
 
 
 @api_router.post("/ofertas/{oferta_id}/finalizar")

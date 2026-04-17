@@ -6,6 +6,7 @@ import Dashboard from "@/pages/Dashboard";
 import Ofertas from "@/pages/Ofertas";
 import CreacionOfertas from "@/pages/CreacionOfertas";
 import Flota from "@/pages/Flota";
+import VehiculosAsignados from "@/pages/VehiculosAsignados";
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -22,6 +23,7 @@ function AppRoutes() {
       <Route path="/" element={loading ? null : (user ? <Navigate to="/dashboard" replace /> : <LoginPage />)} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/ofertas" element={<ProtectedRoute><Ofertas /></ProtectedRoute>} />
+      <Route path="/ofertas/:id/vehiculos-asignados" element={<ProtectedRoute><VehiculosAsignados /></ProtectedRoute>} />
       <Route path="/creacion-ofertas" element={<ProtectedRoute><CreacionOfertas /></ProtectedRoute>} />
       <Route path="/flota" element={<ProtectedRoute><Flota /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
