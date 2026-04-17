@@ -74,8 +74,11 @@ export default function VehiculosAsignados() {
       
       if (res.ok) {
         const result = await res.json();
+        // Recargar datos primero
+        setLoading(true);
         await cargarVehiculosAsignados();
-        alert(`✅ ${result.mensaje || 'Vehículos agregados correctamente'}`);
+        // Mostrar mensaje después de actualizar
+        console.log('✅ Simulación exitosa:', result.mensaje);
       } else {
         const error = await res.json();
         alert(`❌ Error: ${error.detail || 'No se pudo simular la asignación'}`);
@@ -195,21 +198,6 @@ export default function VehiculosAsignados() {
             Volver al listado
           </button>
           <h1>Vehículos Asignados</h1>
-          <button 
-            onClick={() => simularAsignacion(1)}
-            disabled={avanzandoEstado === 'simulando'}
-            className="btn-icon-action btn-icon-asignar"
-            style={{ 
-              padding: '8px 16px',
-              gap: '8px',
-              fontSize: '14px',
-              fontWeight: '600'
-            }}
-            title="Simular asignación de 1 vehículo"
-          >
-            <Plus size={18} />
-            Simular Asignación
-          </button>
         </div>
         <div style={{ textAlign: 'center', padding: '40px' }}>
           <AlertCircle size={48} style={{ color: '#888', margin: '0 auto 16px' }} />
@@ -217,6 +205,22 @@ export default function VehiculosAsignados() {
           <p style={{ fontSize: '14px', color: '#64748b', marginTop: '12px' }}>
             Usa el botón "Simular Asignación" para agregar vehículos progresivamente.
           </p>
+        </div>
+        
+        {/* Botón centrado debajo */}
+        <div style={{ textAlign: 'center', marginTop: '24px' }}>
+          <button 
+            onClick={() => simularAsignacion(1)}
+            disabled={avanzandoEstado === 'simulando'}
+            className="btn-icon-action btn-icon-asignar"
+            style={{ 
+              opacity: avanzandoEstado === 'simulando' ? 0.6 : 1,
+              cursor: avanzandoEstado === 'simulando' ? 'not-allowed' : 'pointer'
+            }}
+            title="Agregar 1 vehículo simulado"
+          >
+            <Plus size={16} />
+          </button>
         </div>
       </div>
     );
@@ -230,21 +234,6 @@ export default function VehiculosAsignados() {
           Volver al listado
         </button>
         <h1>Vehículos Asignados</h1>
-        <button 
-          onClick={() => simularAsignacion(1)}
-          disabled={avanzandoEstado === 'simulando'}
-          className="btn-icon-action btn-icon-asignar"
-          style={{ 
-            padding: '8px 16px',
-            gap: '8px',
-            fontSize: '14px',
-            fontWeight: '600'
-          }}
-          title="Simular asignación de 1 vehículo"
-        >
-          <Plus size={18} />
-          Simular Asignación
-        </button>
       </div>
 
       {/* Resumen mejorado con métricas separadas */}
@@ -487,6 +476,34 @@ export default function VehiculosAsignados() {
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Botón Simular Asignación - Centrado debajo de la tabla */}
+      <div style={{ 
+        textAlign: 'center', 
+        marginTop: '24px',
+        paddingBottom: '24px',
+        borderBottom: '1px solid #e5e7eb'
+      }}>
+        <button 
+          onClick={() => simularAsignacion(1)}
+          disabled={avanzandoEstado === 'simulando'}
+          className="btn-icon-action btn-icon-asignar"
+          style={{ 
+            opacity: avanzandoEstado === 'simulando' ? 0.6 : 1,
+            cursor: avanzandoEstado === 'simulando' ? 'not-allowed' : 'pointer'
+          }}
+          title="Agregar 1 vehículo simulado"
+        >
+          <Plus size={16} />
+        </button>
+        <div style={{ 
+          fontSize: '12px', 
+          color: '#64748b', 
+          marginTop: '8px' 
+        }}>
+          Click para agregar 1 vehículo simulado
+        </div>
       </div>
 
       {/* Modales con diseño mejorado */}
