@@ -1834,28 +1834,28 @@ async def simular_asignacion_progresiva(request: Request, oferta_id: str, data: 
     if not oferta:
         raise HTTPException(status_code=404, detail="Oferta no encontrada")
     
-    # Calcular vehículos requeridos desde la oferta
-    # Prioridad: info_cargue.sitiosCargue > valor por defecto razonable
-    vehiculos_necesarios = 5  # Valor por defecto razonable para testing
-    
-    # Intentar obtener desde info_cargue
-    info_cargue = oferta.get("info_cargue", {})
-    sitios_cargue = info_cargue.get("sitiosCargue", 0)
-    if sitios_cargue and sitios_cargue > 0:
-        # Usar sitios de cargue como referencia base
-        vehiculos_necesarios = max(1, int(sitios_cargue))
-    
-    # Si ya existe una asignación, usar el valor guardado
-    if asignacion:
-        vehiculos_necesarios = asignacion.get("vehiculos_requeridos", vehiculos_necesarios)
-    
-    logger.info(f"Vehículos necesarios para oferta {oferta.get('codigo_oferta')}: {vehiculos_necesarios}")
-    
     # Buscar o crear asignación
     asignacion = await db.asignaciones_vehiculos.find_one(
         {"oferta_id": oferta_id, "tenant_id": user["tenant_id"]},
         {"_id": 0}
     )
+    
+    # Calcular vehículos requeridos desde la oferta
+    # Prioridad: asignación existente > info_cargue.sitiosCargue > valor por defecto
+    vehiculos_necesarios = 5  # Valor por defecto razonable para testing
+    
+    # Si ya existe una asignación, usar el valor guardado (máxima prioridad)
+    if asignacion:
+        vehiculos_necesarios = asignacion.get("vehiculos_requeridos", vehiculos_necesarios)
+    else:
+        # Intentar obtener desde info_cargue
+        info_cargue = oferta.get("info_cargue", {})
+        sitios_cargue = info_cargue.get("sitiosCargue", 0)
+        if sitios_cargue and sitios_cargue > 0:
+            # Usar sitios de cargue como referencia base
+            vehiculos_necesarios = max(1, int(sitios_cargue))
+    
+    logger.info(f"Vehículos necesarios para oferta {oferta.get('codigo_oferta')}: {vehiculos_necesarios}")
     
     # Si no existe asignación, crear una nueva
     if not asignacion:
